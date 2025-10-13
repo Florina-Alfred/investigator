@@ -1,0 +1,183 @@
+## Comparison between Docker and Kubernetes based Edge Architectures for Enabling Remote Model Predictive Control for Aerial Robots
+
+Achilleas Santi Seisa, Sumeet Gajanan Satpute and George Nikolakopoulos
+
+Abstract -Edge computing is becoming more and more popular among researchers who seek to take advantage of the edge resources and the minimal time delays, in order to run their robotic applications more efficiently. Recently, many edge architectures have been proposed, each of them having their advantages and disadvantages, depending on each application. In this work, we present two different edge architectures for controlling the trajectory of an Unmanned Aerial Vehicle (UAV). The first architecture is based on docker containers and the second one is based on kubernetes, while the main framework for operating the robot is the Robotic Operating System (ROS). The efficiency of the overall proposed scheme is being evaluated through extended simulations for comparing the two architectures and the overall results obtained.
+
+Index Terms -UAV; MPC; Edge Computing; Docker; Kubernetes.
+
+## I. INTRODUCTION
+
+Nowadays, the need for autonomous solutions for robotic applications is rapidly increasing, while these operations are usually based on complex methodologies and algorithms, which are computationally demanding. In many cases, robotic platforms can not handle the demanding processes since they do not have the needed computational power. In that context, it is crucial to increase the computational capability of robots, which is one of the main reasons why the idea of utilizing external resources for robotic applications has been studied extensively. Some missions, like controlling and navigating a robot, are delay sensitive and thus, cloud solutions can not be used for these kind of applications and instead, edge computing solutions, in a form of distributed computing can be used. Towards this direction, related works in the field of cloud architectures for vehicles, the different layers and the subcategories are presented in [1]. Edge computing not only provides significant improvements in resources in terms of processors that the robots are deployed with, but also, the issue of reduced time delays, since the hardware of edge computing is located in a close proximity to the robots. As a result, the time delays for the data to be transferred from the robots to the edge and vice versa, are relatively small. Even though edge computing has been proven to be a promising solution, it is still not universally applied especially for closed-loop systems.
+
+This work has been partially funded by the European Unions Horizon 2020 Research and Innovation Programme AERO-TRAIN under the Grant Agreement No. 953454.
+
+The authors are with the Robotics and AI Team, Department of Computer, Electrical and Space Engineering, Lule˚ a University of Technology, Lule˚ a
+
+Corresponding Author's email: achsei@ltu.se
+
+Virtual Machines (VMs) are a good option for heavy applications since they emulate an entire machine, down to the hardware layers, but not for application for which mobility needs to be supported. For these applications docker containers [2], which emulate only the software components, are a better option. In [3], a review of containers and clusters with their benefits compared to VMs are presented. Researchers also discussed the edge cluster requirements and the option of containerized application orchestrators like kubernetes. Docker and kubernetes are two very popular platforms among researchers and engineers, because they allow them to build and deploy distributed applications quickly. These technologies have been used for cloud and edge based robotic applications. In [4], a containerized application including a remote controller that could run through a mobile edge server in a form of a docker container is introduced. An optimisation strategy, based on stochastic processes is introduced in [5] for distributing containers to the cloud, edge and fog, while the whole process is automated by using a kubernetes orchestration. An architecture for distributed edge and cloud resources is presented in [6]based on kubernetes orchestration for a virtual cluster, while in [7], low-latency edge services for robotic applications were introduced for container interaction. In [8], an architecture based on docker, kubernetes and ROS, for robotic applications is presented. The applications were deployed into the cloud clusters, and the architecture was evaluated through several configurations of the interaction of a mobile robot with an industrial agile production chain.
+
+In [9] and [10], researchers suggested to offload the model predictive controller (MPC) on external sources. A cloudbased architecture was proposed in [9] to offloaded the MPC with a variable horizon strategy. In [10], an architecture consisting of two MPCs is implemented where one MPC is running on a local edge and the other on a cloud. In comparison to these articles, our current work focuses more on the architecture of the system, while investigating different frameworks and components.
+
+The main contributions of this article stems from presenting and highlighting two potential architectures that can be used, not only for controlling the trajectory of an aerial robot, but also to be used for closing the loop between the edge and any platform for time sensitive missions. The proposed solutions are based on technologies that most edge providers are offering, which makes these solutions universally applicable. Our goal is to point out the main components and the operating principles of these architecture, and showcase their pros and cons through simulations. That way, we are aiming to present the advantages of applied edge computing in the field of robotics and more specific to aerial robotics, and at the same time, provide inspiration for future works.
+
+The rest of the article unfolds in the following manner. In Section II the model of the UAV and the controller are presented. In Section III the two different architectures are described and the technologies used for each one of them are presented. Simulation results are demonstrated and meaningful characteristic of the architectures, such as responses and time delays are shown in Section IV. Finally, we conclude the article in Section V, with a brief overview and potential future directions.
+
+## II. MODEL PREDICTIVE CONTROL
+
+The utilized controller for this article is a Model Predictive Controller, based on [11]. MPC is a commonly used controller for aerial robots, thanks to its advantages and predictive behaviour. In comparison to other commonly used controllers such as PID or LQR, MPC is a more computationally heavy controller, since it uses optimization methods to extract the future states based on a finite prediction horizon, thus, external resources can be handy.
+
+The UAV is considered as a six degree of freedom robot with a fixed body frame and the MPC is responsible for controlling the trajectory of the UAV. The kinematic model is described by Eq. 1 in the body frame.
+
+<!-- formula-not-decoded -->
+
+In Eq. 1 we denote the following parameters. p is the position, and v is the linear velocity given in the global frame. R ( φ ( t ) , θ ( t )) is the rotation matrix that represents the attitude in Euler form. φ and θ are the roll and pitch angles along the x W and y W axes respectively, while φ d and θ d and T ≥ 0 are the desired inputs values to the system in roll, pitch and the total thrust. In this model, the acceleration is depending only on the magnitude and angle of the thrust vector, produced by the motors, as well as the linear damping terms symbolized as A x , A y , A z and the gravity of earth symbolized as g . The attitude terms are modeled as a first-order system between the attitude and the referenced φ ref and θ ref , with gains K φ and K θ and time constants τ φ and τ θ . The motor commands for the UAV are generated through a lower-level attitude controller that takes thrust, roll and pitch commands as inputs in order to produce the commands.
+
+## A. Cost Function
+
+For the cost function, the state vector of the UAV is denoted as x = [ p, v, φ, θ ] T and the control input vector as u = [ T, φ d , θ d ] T . The sampling time of the system is δ t , using a forward Euler method for each time instance ( k +1 | k ) . The prediction considers the specified number of steps into the future, which is called prediction horizon and it is represented as N . A related optimizer is tasked with finding an optimal set of control actions, defined by the cost minimum of this cost function, by associating a cost to a configuration of states and inputs at the current time and in the prediction. The predicted states at the time step k + j , produced at the time step k are represented as x k + j | k . The corresponding control actions are represented as u k + j | k . Also x k and u k represent the full predicted states and the corresponding control inputs along the prediction horizon correspondingly. The objective of the controller is to navigate to the desired position and deliver smooth control inputs. The cost function is presented in Eq. 2 as:
+
+<!-- formula-not-decoded -->
+
+where Q x is the matrix for the state weights, Q u is the matrix for the input weights and Q δu is the matrix for the input rate weights. The first term describes the state cost, which is the cost associated with deviating from a certain desired state x d . The second term describes the input cost that penalizes a deviation from the steady-state input u d = [ g, 0 , 0] and represent the inputs that describe hovering. The final term is added to guarantee that the control actions are smooth. We evaluate the overall behavior of the MPC scheme by measuring the overall time delays for the proposed edge architectures.
+
+## III. ARCHITECTURE AND FRAMEWORKS
+
+The proposed closed loop systems consist of the edge side and the robot side. On the robot side we have the UAV that we are aiming to control and on the edge side we have the controller. The edge side of the system is different since we used two different edge solutions. In the first case, we used docker containers, which will be described in Section III-A and in the second case, we used kubernetes orchestration which will be described in Section III-B. In both architectures, the utilized docker images and the robot side is the same. ROS is used for the operation of the robot and the communication between the edge and the robot through ROS nodes. Furthermore, we have to export ROS master and IP in every device so that communication between edge and UAV ROS nodes would be established.
+
+In this work, all the devices are operating on the same network. This makes the setup easier to handle since ROS communication is based on opening random ports for the communication between ROS nodes of different devices. The described communication is enabled through a WiFi network.
+
+The states x ( k ) , which are the linear position, linear velocity and quaternions, are generated by the robot and are published to the odometry ROS topic. The MPC ROS node subscribes to that topic, as well to the reference ROS topic, which publishes the referenced trajectory signal of the UAV, r ( k ) . The states signal arrives to the MPC ROS node with a time delay due to the travel time between the robot and the edge, thus the states signal on the MPC is x ( k -d 1 ) . The generated by the MPC command signal is denoted as u ( k -d 2 and is published to the command topic to which the robot ROS node subscribes in order to receive that command signal. The command signal arrives to the robot with some delay so it is stated as u ( k -d 3 ) . Finally, the output of the system is represented as y ( k ) .
+
+## A. Docker
+
+Docker is a platform for developing and running and managing containerized applications quickly. For the dockerbased edge architecture, we used two docker images that were deployed with all the necessary libraries and dependencies, in order to run the controller. Both docker images used ROS noetic on Ubuntu 20.04, entrypoint. On top of it, for one of the images, additional ROS packages, like the MPC package, optimization engines and some needed libraries were deployed. Afterwards, the two docker containers were created on an edge machine. The first docker container is running the ROS master, where all the ROS nodes have to register in order to communicate with each other, and the second docker container contains the MPC application and is running the controller. The docker architecture is shown in Fig.1.
+
+The communication between ROS nodes is through IP addresses and ports. Each device has its own IP in the network, while the assignment of ports is happening randomly. On the other hand, containerized applications are assigned to private IPs. This creates a communication issue among the containerized ROS nodes. In order to overcome this issue, the two containers are launched with access to the networking interfaces of the host by using the host network option when running the containers.
+
+Fig. 1. Docker-based edge architecture. Data flow across ROS nodes is depicted for the closed loop system
+
+<!-- image -->
+
+## B. Kubernetes
+
+Kubernetes is a containerized application orchestrator, mainly based on docker containers, and it offer several features. These features can be essential for some applications, but come with a cost since kubernetes is a much more complex environment in comparison to just using docker containers, and it consists of more components and requires some expertise. In the case of controlling a UAV through the edge, the features that kubernetes can provide, like the automated deployment of the application, scheduling, scaling and monitoring are essential and can create a more robust and resilient ecosystem for our application. A Kubernetes cluster consists of two nodes, the master node that controls and manages the worker node and the worker node where the application pods are deployed. The deployed pods are based on the same images that were created for the docker-based edge architecture. The first pod consists of the ROS master that is necessary for the ROS operation and the second pod consists of the controller and all the necessary libraries and dependencies. The kubernetes architecture is shown in Fig.2.
+
+Kubernetes is a multi layer system and again in this case containerized applications are assigned to private subnet IPs. To overcome this problem, we used the host network option when we deployed the pods in order to use the ROS framework and give to the pods access to the loopback device. Additionally, we use services to enable the communication between the pods.
+
+Fig. 2. Kubernetes-based edge architecture. Data flow across ROS nodes is depicted for the closed loop system
+
+<!-- image -->
+
+## C. Docker and Kubernetes Comparison
+
+In the above architectures, we used docker containers both independently and as a component of kubernetes cluster. The docker-based architecture was about packaging the MPC and roscore containerized applications on a single node, while the kubernetes-based was meant to run them across a cluster. For small projects, without a lot of requirements adopting docker might be efficient, but for larger projects with a lot of requirements, such as container scheduler, kubernetes can be much more beneficial. In our application, both architectures were efficient. However, if we want to expand our application for more complex missions and we need to deploy multiple containers, kubernetes provides some features, that can be essential. For example, re-creation is an important feature, even in our application, since in case of failure of the MPC pod, kubernetes will take care of it and will automatically deploy a new one.
+
+## IV. SIMULATION RESULTS
+
+For the evaluation of the two architectures, we ran a series of simulations. To simulate the UAV, we used the simulation environment gazebo and the ROS package rotors simulator, on a local computer. For the edge, we had a machine with the following characteristics: Processor: Intel Core i5-8400 CPU at 2.80GHz×6 and RAM: 32GB. This machine was the host for both the docker containers and the kubernetes cluster. The two devices communicate with each other through ROS over the same WiFi network.
+
+The two presented architectures were evaluated in terms of time delays. To achieve that we measured the travel times and execution times, while the MPC execution rate was set at 100 Hz and the MPC horizon at 100 steps . These values are relatively high, thus some local processor would not be able to handle the operation of the MPC. The advantage of having such high values is that the execution of the MPC is fast, which means that it can generate commands to be send to the UAV rapidly. Moreover, MPC can predict the change of dependent variables, thus high prediction horizon can make better predictions and predict changes faster. Since we are utilizing a powerful edge machine we were able to choose high values without any issue.
+
+The first set of experiments is based on the docker architecture. We present the responses of the system for the three trajectories, we showcase the time measurements for the travel times and the execution time and we present the CPU usage.
+
+Fig. 3. UAV 3D circular trajectory based on a docker-based architecture
+
+<!-- image -->
+
+In Fig. 3 and Fig. 4, we can observe that the UA V (blue line) can follow the referenced trajectory (red line) in the desired manner. The offloaded MPC can control the UAV without any major issue according to the simulation results and the graphs.
+
+The measurements from the helical trajectory for the travel and execution times are shown in In Fig. 5, Fig. 6 and Fig. 7, where the duration of the trajectory was 80 seconds. The mean travel time of a packet from the robot to the edge is
+
+<!-- image -->
+
+Fig. 4. UAV 3D helical trajectory based on a docker-based architecture
+
+<!-- image -->
+
+Fig. 5. Deviation of robot to edge travel time for the helical trajectory
+
+Fig. 6. Deviation of MPC execution time for the helical trajectory
+
+<!-- image -->
+
+Fig. 7. Deviation of edge to robot travel time for the helical trajectory
+
+<!-- image -->
+
+14 . 2 milliseconds , the execution time is 16 . 1 milliseconds , and the travel time of a packet from the edge to the robot is 17 . 6 milliseconds . We can observe some high values on the above graphs, which do not effect the response of the system, since they are not continuous and the values are not extremely high.
+
+The overall time or round trip time (rtt) of the system depends on the MPC execution time, which is based on the MPC rate and computational needs, and the travel time delays, which are based on the network. The round trip time is the sum of all the each time parameter as shown in Eq. 3.
+
+<!-- formula-not-decoded -->
+
+where T rtt is the round trip time, T ttre is the travel time from the robot to the edge, T exec is the MPC execution time, and T tter is the travel time from the edge to the robot. Thus, the measured mean round trip time is 47 . 9 milliseconds .
+
+Fig. 8. Edge resources usage for the helical trajectory
+
+<!-- image -->
+
+The percentage of resources used at the edge for the execution of the controller is depicted in Fig. 8. The yellow area represents the us which is the amount of time the CPU spends executing processes in user-space, while the orange area represents sy which is the amount of time spent running system kernel-space processes. The mean us is 9 . 2000% and the mean sy is 0 . 8328% , while the mean of both processes combined is 10 . 0328% .
+
+The next series of the simulation tests is based on the kubernetes architecture.
+
+Fig. 9. UAV 3D circular trajectory based on a kubernetes-based architecture
+
+<!-- image -->
+
+The responses are depicted in Fig. 9 and Fig. 10. The closed loop system behavior is the desired one.
+
+The results for the travel and execution times for the helical trajectory of the kubernetes-based architecture are shown in In Fig. 11, Fig. 12 and Fig. 13. The mean travel time of a packet from the robot to the edge is 9 . 5 milliseconds , the execution time is 16 . 9 milliseconds , and the travel time of a packet from the edge to the robot is 13 . 1 milliseconds . Again we can notice some high values on the above graphs, which do not effect the response of the system.
+
+<!-- image -->
+
+Fig. 10. UAV 3D helical trajectory based on a kubernetes-based architecture
+
+<!-- image -->
+
+Fig. 11. Deviation of robot to edge travel time for the helical trajectory
+
+Fig. 12. Deviation of MPC execution time for the helical trajectory
+
+<!-- image -->
+
+Fig. 13. Deviation of edge to robot travel time for the helical trajectory
+
+<!-- image -->
+
+The measured mean round trip time in this case is 39 . 5 milliseconds , which is less than the measured round trip time of the docker architecture.
+
+The Euclidean error between the actual position of the UAV and the reference position is shown in 14, where the blue line represents the error for the docker-based architecture and the red line represents the error for the kubernetes-based. In both
+
+Fig. 14. Euclidean error between UAV position and reference position for docker-based (blue line) and kubernetes-based (red line) architectures, for (a) circular and (b) helical trajectory
+
+<!-- image -->
+
+cases. In this case the error is similar and is based on the chosen tolerance, which is set at 0 . 7 meters .
+
+Fig. 15. Edge resources usage for the helical trajectory
+
+<!-- image -->
+
+Finally, the percentage of resources used at the edge for the execution of the controller is depicted in Fig. 15. The mean us is 18 . 8479% and the mean sy is 4 . 4603% , while the mean of both processes combined is 23 . 3082% . These values are quite bigger than the ones of the docker based architecture since the kubernetes environment is a more complicated and heavy than just a docker container, but still the edge machine can handle the process without any issues.
+
+## V. CONCLUSIONS AND FUTURE WORK
+
+In this article, two novel edge architectures were presented and compared for controlling the trajectory of a UA V. We were able to successfully control the UAV with the implementation of both architectures, and the measured results were similar in both cases. Each of the architectures provides some advantages over the other one, depending on the application. A dockerbased architecture is simple to implement but does not support some features that kubernetes architecture does that can be essential in some missions when container orchestration is needed. Based on the mission, we should be able to identify the best approach. Also the cost should be taken under consideration, since the use of a docker container without kubernetes orchestration is a much more affordable option. In this work, we were focused on containerized application forms and not on VMs, since the advantages that containers provide are essential for the kind of applications we were studying.
+
+These architectures can be used in many scenarios for realtime operations that are time sensitive. The next step for these architectures would be, to be used in real-life scenarios in an experimental setup. Offloading the MPC to the edge is very useful since we were able to test a time sensitive system and set high values for the horizon and the execution rate to have desired performance. Other application that can be offloaded to the edge using the same architectures are the problem of simultaneous localization and mapping or path planning. The edge will not only provide resources but at the same time, it will provide a centralized layer through which robots will be able to communicate and collaborate with each other in order to complete missions autonomously.
+
+## REFERENCES
+
+- [1] H. Wang, T. Liu, B. Kim, C.-W. Lin, S. Shiraishi, J. Xie, and Z. Han, 'Architectural design alternatives based on cloud/edge/fog computing for connected vehicles,' IEEE Communications Surveys Tutorials , vol. 22, no. 4, pp. 2349-2377, 2020.
+- [2] T. Taleb, K. Samdanis, B. Mada, H. Flinck, S. Dutta, and D. Sabella, 'On multi-access edge computing: A survey of the emerging 5g network edge cloud architecture and orchestration,' IEEE Communications Surveys Tutorials , vol. 19, no. 3, pp. 1657-1681, 2017.
+- [3] C. Pahl and B. Lee, 'Containers and clusters for edge cloud architectures - a technology review,' in 2015 3rd International Conference on Future Internet of Things and Cloud , 2015, pp. 379-386.
+- [4] I. A. Tsokalo, H. Wu, G. T. Nguyen, H. Salah, and F. H.P. Fitzek, 'Mobile edge cloud for robot control services in industry automation,' in 2019 16th IEEE Annual Consumer Communications Networking Conference (CCNC) , 2019, pp. 1-2.
+- [5] P. Kochovski, R. Sakellariou, M. Bajec, P. Drobintsev, and V. Stankovski, 'An architecture and stochastic method for database container placement in the edge-fog-cloud continuum,' in 2019 IEEE International Parallel and Distributed Processing Symposium (IPDPS) . IEEE, 2019, pp. 396405.
+- [6] R. Figueiredo and K. Subratie, 'Edgevpn. io: Open-source virtual private network for seamless edge computing with kubernetes,' in 2020 IEEE/ACM Symposium on Edge Computing (SEC) . IEEE, 2020, pp. 190-192.
+- [7] J.-G. Cha and S. W. Kim, 'Design and evaluation of container-based networking for low-latency edge services,' in 2021 International Conference on Information and Communication Technology Convergence (ICTC) . IEEE, 2021, pp. 1287-1289.
+- [8] F. Lumpp, M. Panato, F. Fummi, and N. Bombieri, 'A container-based design methodology for robotic applications on kubernetes edge-cloud architectures,' in 2021 Forum on specification &amp; Design Languages (FDL) . IEEE, 2021, pp. 01-08.
+- [9] P. Skarin, J. Eker, and K.-E. ˚ Arz´ en, 'Cloud-based model predictive control with variable horizon,' IFAC-PapersOnLine , vol. 53, no. 2, pp. 6993-7000, 2020.
+- [10] K.-E. ˚ Arz´ en, P. Skarin, W. T¨ arneberg, and M. Kihl, 'Control over the edge cloud-an mpc example,' in 1st International Workshop on Trustworthy and Real-time Edge Computing for Cyber-Physical Systems, Nashville, United States , 2018.
+- [11] B. Lindqvist, S. S. Mansouri, and G. Nikolakopoulos, 'Non-linear mpc based navigation for micro aerial vehicles in constrained environments,' in 2020 European Control Conference (ECC) , 2020, pp. 837-842.

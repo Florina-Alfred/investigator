@@ -1,0 +1,312 @@
+## End-to-End Humanoid Robot Safe and Comfortable Locomotion Policy
+
+Zifan Wang ∗ 1 , Xun Yang ∗ 1 , Jianzhuang Zhao 3 , Jiaming Zhou 1 , Teli Ma 1 , Ziyao Gao 1 , Arash Ajoudani 3 , Junwei Liang † 1 , 2
+
+Abstract -The deployment of humanoid robots in unstructured, human-centric environments requires navigation capabilities that extend beyond simple locomotion to include robust perception, provable safety, and socially aware behavior. Current reinforcement learning approaches are often limited by blind controllers that lack environmental awareness or by vision-based systems that fail to perceive complex 3D obstacles. In this work, we present an end-to-end locomotion policy that directly maps raw, spatio-temporal LiDAR point clouds to motor commands, enabling robust navigation in cluttered dynamic scenes. We formulate the control problem as a Constrained Markov Decision Process (CMDP) to formally separate safety from task objectives. Our key contribution is a novel methodology that translates the principles of Control Barrier Functions (CBFs) into costs within the CMDP, allowing a model-free Penalized Proximal Policy Optimization (P3O)-to enforce safety constraints during training. Furthermore, we introduce a set of comfort-oriented rewards, grounded in human-robot interaction research, to promote motions that are smooth, predictable, and less intrusive. We demonstrate the efficacy of our framework through a successful sim-to-real transfer to a physical humanoid robot, which exhibits agile and safe navigation around both static and dynamic 3D obstacles. Project Page: https: //github.com/aCodeDog/SafeHumanoidsPolicy
+
+Keywords: Humanoid Robot, Locomotion, Reinforcement Learning, Collision Avoidance, LiDAR Perception
+
+## I. INTRODUCTION
+
+The vision of humanoid robots seamlessly coexisting and collaborating with people in everyday environments presents a grand challenge for robotics. A fundamental prerequisite for this vision is the ability to navigate complex, human-centric spaces safely and efficiently. This requires more than just dynamic locomotion; it demands a holistic integration of 3D perception, principled safety, and social awareness, an area where current controllers often fall short.
+
+A significant body of state-of-the-art research in legged locomotion has relied on reinforcement learning (RL) to develop controllers that are "blind," using only proprioceptive feedback [1], [2], [3]. While these methods have achieved remarkable agility on flat or moderately uneven terrain, they are inherently incapable of navigating environments with obstacles.
+
+To overcome this, recent work has incorporated exteroceptive sensing, primarily using depth cameras to generate 2D height maps for local terrain awareness[4], [5], [6], [7].Depth
+
+*Equal contribution. †Corresponding author. 1 The Hong Kong University of Science and Technology (Guangzhou), 2 The Hong Kong University of Science and Technology, 3 Human-Robot Interfaces and Interaction Lab., Istituto Italiano di Tecnologia, Italy.
+
+cameras are sensitive to lighting conditions and have a limited field of view[8], [9], [10].And the reduction of 3D sensory information to a 2D elevation map makes the robot blind to any non-ground-level obstacles, such as overhanging clutter or the upper bodies of other agents[11], [12], [13]. This limitation poses a substantial collision risk for a full-body humanoid robot. We argue that for robust navigation in cluttered indoor spaces, a perception modality that is lightinginvariant and provides direct 3D information is essential. LiDAR sensors meet these criteria, yet their integration into end-to-end locomotion policies remains limited [14], [15].
+
+Even with robust perception, ensuring safety is a nontrivial challenge. The common approach of shaping reward functions with penalties for collisions is often brittle, difficult to tune, and can lead to overly conservative or still-unsafe behaviors [16], [7], [17]. Furthermore, for robots intended to operate alongside people, merely avoiding collisions is insufficient. The robot's motion must also be psychologically comfortable-that is, predictable, fluid, and nonthreatening-to foster trust and acceptance [18], [19], [20], [21]. This higher-level, human-centric aspect of motion planning is rarely considered in locomotion policies.
+
+In this work, we address these gaps with an integrated, end-to-end framework. Our contributions are:
+
+- 1) A LiDAR-driven end-to-end policy that processes raw 3D point clouds to navigate complex environments, overcoming the limitations of blind and 2D-visionbased approaches.
+- 2) A principled safety framework based on Constrained Reinforcement Learning (CMDP). We introduce a novel method to translate model-based Control Barrier Function (CBF) principles into costs for a model-free RL algorithm, P3O, enabling robust safety enforcement.
+- 3) A comfort-oriented reward structure explicitly designed to produce socially aware motions by penalizing behaviors known to cause human discomfort, such as high approach speeds and unpredictable movements, as identified in HRI research.
+- 4) Successful real-world deployment on a humanoid robot, demonstrating agile and robust avoidance of diverse static and dynamic 3D obstacles in cluttered environments.
+
+## II. RELATED WORK
+
+A. Legged Robot Locomotion and Perception
+
+RL has produced policies capable of remarkable dynamic skills, yet many still lack the environmental perception needed for navigation in cluttered spaces[22], [5], [23]. Recent work has begun to incorporate exteroceptive sensing. Policies using height maps derived from depth cameras or LiDAR have successfully traversed uneven terrain[7], [4], [24], [25], [14].
+
+## B. Safe Reinforcement Learning
+
+Ensuring safety during RL is critical for real-world deployment[26], [27]. A common but often unreliable method is to use negative rewards to penalize unsafe actions. A more structured approach is to formulate the problem as a CMDP, which separates the task objective (reward) from safety specifications (constraints)[28], [29]. This allows for the use of specialized algorithms that aim to satisfy constraints while maximizing rewards.
+
+Within this domain, Control-Theoretic Methods offer strong safety guarantees. CBFs define a safe region of the state space and can be used to synthesize controllers that are guaranteed to remain within it[30], [31]. However, classical CBF approaches typically require an accurate analytical model of the system dynamics, making them difficult to apply directly in modelfree RL.
+
+Our work bridges this gap. We draw inspiration from CBF theory to define a safety condition but implement it as a cost function within a CMDP inspired by [32], [33]. This allows us to use a powerful, model-free constrained policy optimization algorithm, P3O [28], to learn a safe policy. P3O is a first-order method, making it more computationally efficient than higher-order alternatives like CPO , and its use of normalized advantage functions improves training stability. By integrating CBF principles into a proven, practical CMDP algorithm, we develop a robust framework for learning safe, perception-driven locomotion.
+
+## III. DEFINITIONS
+
+## A. Constrained Markov Decision Process
+
+The task of learning a safe locomotion policy is formulated as a CMDP which is defined by a tuple ( S , A , P, R, { C j } , { ϵ j } , γ RL ) , where:
+
+- S is the set of states s k .
+- A is the set of actions a k (equivalent to u k ).
+- P ( s k +1 | s k , a k ) is the state transition probability.
+- R ( s k , a k , s k +1 ) is the reward function.
+- C j ( s k , a k , s k +1 ) is the j -th instantaneous cost function.
+- ϵ j is the threshold for the j -th constraint.
+- γ RL ∈ [0 , 1) is the discount factor for reinforcement learning.
+
+The objective is to find a policy π : S → P ( A ) that maximizes the expected discounted sum of rewards, J R ( π ) = E τ ∼ π [ ∑ ∞ t =0 γ t R ( s t , a t , s t +1 )] , subject to constraints on the expected discounted sum of costs:
+
+<!-- formula-not-decoded -->
+
+We partition the state space S into a set of safe states , denoted S safe , and a set of unsafe states , denoted S unsafe , such that S = S safe ∪ S unsafe and S safe ∩ S unsafe = ∅ . The set S safe represents configurations where the system can operate without risk, while S unsafe represents configurations that must be avoided. We introduce the following definitions related to human comfort, assuming operation primarily within the safe space S safe .
+
+Definition 1 (Interactive Comfortable Space): Given the set of safe states S safe in a CMDP, the Interactive Comfortable Space (ICS), denoted by S IC , is a subset of the safe state space, S IC ⊆ S safe. This subspace represents state configurations wherein the agent's (e.g., robot's) presence and subsequent actions, governed by a comfortable policy (see Definition 2), are intended to avoid causing disruption or discomfort to proximate passive agents (e.g., humans, animals, see Fig. 1) sharing the operational environment. The specific definition of S IC is based on proximity, velocity, and agent's state.
+
+Fig. 1. Illustration of safe and comfortable space
+
+<!-- image -->
+
+Definition 2 (Safe and Comfortable Policies): Consider a CMDP ˆ M with safe states S safe , unsafe states S unsafe, and Interactive Comfortable Space S IC ⊆ S safe. Let a trajectory starting from s 0 under a stochastic policy π ( a | s ) be denoted by { s t } t ≥ 0 , where s t +1 ∼ P ( s t +1 | s t , a t ) and a t ∼ π ( a t | s t ) . We define classes of policies based on their safety and comfort properties:
+
+- A policy π is safe if, for any initial state s 0 ∈ S safe , the resulting trajectory satisfies P ( s t ∈ S safe , ∀ t ≥ 0 | s 0 , π ) = 1 . Let Π safe denote the set of all safe policies.
+- A policy π is comfortable if it is safe ( π ∈ Π safe) and additionally, for any initial state s 0 ∈ S IC , the resulting trajectory satisfies P ( s t ∈ S IC , ∀ t ≥ 0 | s 0 , π ) = 1 . Let Π C denote the set of all comfortable policies. By definition, Π C ⊆ Π safe .
+- A policy π is uncomfortable but safe if π ∈ Π safe but π / ∈ Π C . This implies that the policy guarantees safety (stays within S safe) but does not guarantee remaining within the comfortable subspace S IC when starting from S IC . Let Π UC = Π safe \ Π C .
+- A unsafe policy π / ∈ Π safe means there exists some initial state s 0 ∈ S safe such that P ( ∃ t &gt; 0 s.t. s t ∈ S unsafe | s 0 , π ) &gt; 0 . Let Π unsafe be the set of all unsafe policies.
+
+Definition 3 (Comfortable Target Tracking and Obstacle Avoidance): Given a CMDP ˆ M , a target state s goal or target region S goal , the safe state space S safe, and the Interactive Comfortable
+
+Space S IC , the objective of Comfortable Target Tracking and Obstacle Avoidance is to find an optimal comfortable policy π ∗ C ∈ Π C that maximizes a task-specific performance criterion J ( π ) (e.g., maximizes rewards s goal , minimizes expected cost to reach S goal ) subject to the safety and comfort constraints defined in Definition 2. Specifically, π ∗ C = arg max π ∈ Π C J ( π ) .
+
+## B. System Dynamics
+
+We consider a robot operating in discrete time steps k . Its state at time step k is denoted by x k ∈ S ⊆ R n , and the control input applied is u k ∈ A ⊆ R m . The system dynamics are described by:
+
+<!-- formula-not-decoded -->
+
+We assume the system dynamics is linear:
+
+<!-- formula-not-decoded -->
+
+where A L is the state-transition matrix, and B L is the input matrix.
+
+## C. Discrete Control Barrier Functions (DCBF)
+
+A DCBF h ( x k ) : R n → R is used to define a safe set C = { x k ∈ S| h ( x k ) ≥ 0 } [34]. A control input u k renders the set C forward invariant if for some 0 &lt; γ CBF ≤ 1 , the following condition holds :
+
+<!-- formula-not-decoded -->
+
+This ensures that if x k ∈ C , then x k +1 also remains in (a subset of) C .
+
+## IV. METHODOLOGY
+
+Our framework is designed to learn a Comfortable Policy ( π ∗ C ) that operates within the formally defined safe and comfortable state spaces. The methodology integrates perception, safety constraints, and policy learning into a single end-to-end model. We translate a CBF-based safety condition into a cost function for our CMDP, which is then solved using the P3O algorithm to find a policy that maximizes the task objective while satisfying all constraints.
+
+Fig. 2. Overview of the proposed training framework. Raw sensor data is processed by the Actor (policy).
+
+<!-- image -->
+
+## A. Network Inputs and Architecture
+
+## 1) Actor Inputs (Policy):
+
+- Proprioceptive and Command History: To capture the robot's recent motion and intentions, the polcy is provided with a history of the 10 timesteps. Each step in this history contains the robot's joint positions, joint velocities, joint accelerations, the previous action taken, base linear velocity, base angular velocity, the gravity vector in the base frame, base height, and the user command (linear x/y velocity, angular yaw velocity).
+- Exteroceptive (LiDAR) Features: The environment is perceived through a feature vector extracted from the raw LiDAR point cloud. This LiDAR embedding, which captures the essential geometric information of the surroundings, is a 64-dimensional vector.
+- 2) Critic Inputs (Privileged Information): During training, the reward and safety critics receive all the information available to the actor, plus additional privileged information that is only available in simulation. The privileged information includes the true distance and velocity of the nearest obstacle in 8 discrete directions around the robot,the contact force of whole body link, and safe condition(the joints limits, minimum safe distance) .
+- 3) Network Architecture: As illustrated in Figure 2, the LiDAR feature history is processed by a Gated Recurrent Unit (GRU) to extract temporal patterns. The output of the GRU is then concatenated with the flattened proprioceptive and command history. This combined feature vector is passed through a series of fully connected layers forming a MultiLayer Perceptron (MLP), which constitutes the main body of the actor and critic networks.
+
+## B. Enforcing the Safe State Space via LDCBF Cost
+
+To ensure the learned policy π is a member of the set of Safe Policies ( Π safe ), we must prevent it from entering the unsafe state space S unsafe . We define the boundary of the Safe State Space ( S safe ) by enforcing a minimum distance D min from obstacles, formulated using a Linear DiscreteTime Control Barrier Function (LDCBF).
+
+Assuming the obstacle boundary is locally approximated by a hyperplane, the LDCBF barrier function h D ( s k ) is defined as the signed distance from the robot's position p ( s k ) to a safety margin offset from the obstacle:
+
+<!-- formula-not-decoded -->
+
+where o k is the closest point on the obstacle and η k is the outward-pointing normal vector, both derived from the current LiDAR scan. Safety requires h D ( s k ) ≥ 0 .
+
+For a linear system model s k +1 = A L s k + B L u k , the onestep-ahead safety condition h D ( s k +1 ) ≥ (1 -γ CBF ) h D ( s k ) can be written as a linear constraint on the control input u k :
+
+<!-- formula-not-decoded -->
+
+where G D is a function affine in u k . Since our framework is model-free, we do not use this constraint to filter actions directly. Instead, we transform its violation into an instantaneous cost function for the CMDP:
+
+<!-- formula-not-decoded -->
+
+This cost is positive only if the chosen action u k is predicted to violate the safety barrier.
+
+## C. Learning Comfortable Policies via Rewards and Costs
+
+The policy is trained within a CMDP framework where the reward function guides the agent toward completing its task in a comfortable and socially acceptable manner, while the cost functions define hard safety and operational constraints. This design is informed by established principles in Human-Robot Interaction (HRI) to enhance perceived safety and comfort.
+
+1) Reward Function: The total reward R k is a weighted sum of task-oriented and comfort-oriented components. Research in HRI consistently demonstrates that human comfort is influenced by a robot's speed, proximity, ad the predictability of its movements. Abrupt or head-on movements are perceived as more threatening than smooth, tangential ones. Our reward structure is designed to directly incorporate these findings.
+
+TABLE I UNIFIED REWARD AND COST FUNCTION COMPONENTS
+
+| Component                  | Equation / Notation                         | Weight           |
+|----------------------------|---------------------------------------------|------------------|
+| Task-Oriented Rewards      |                                             |                  |
+| Velocity Tracking          | exp( - α v ∥ v k - v cmd k ∥ 2 )            | 2.0              |
+| Yaw Rate Tracking          | exp( - α ω ( ω z,k - ω cmd z,k ) 2 )        | 0.5              |
+| Auxiliary Rewards          |                                             |                  |
+| Z velocity                 | v 2 z                                       | - 3 × 10 - 4     |
+| Link Collision             | || Force PenltyLink xy || 2                 | - 0 . 02         |
+| Joint Torques              | || τ || 2                                   | - 1 × 10 - 6     |
+| Joint Velocities           | || ˙ q || 2                                 | - 1 × 10 - 6     |
+| Joint Accelerations        | || ¨ q || 2                                 | - 2 . 5 × 10 - 7 |
+| Action Smoothing           | || a t - 1 - a t || 2                       | - 5 × 10 - 3     |
+| Action Smoothing rate      | || a t - 2 - 2 a t - 1 + a t || 2           | - 1 × 10 - 5     |
+| Comfort-Oriented Rewards   |                                             |                  |
+| Proxemic Comfort           | exp( - α p ( d human ,k - d social ) 2 )    | 1.5              |
+| Safe Approach Velocity     | - max(0 , - v k · η k )                     | -1.0             |
+| Safe Approach Acceleration | - max(0 , - a k · η k )                     | -1.0             |
+| Tangential Avoidance       | 1 - max(0 , ˆ v k · ( - ˆ d obs ,k ))       | 1.0              |
+| Constraints                |                                             |                  |
+| Safety Distance Violation  | C safe = 1 D obs ,k <d safe                 | d j = 0 . 0      |
+| Joint Limit Violation      | C q = ∑ i 1 q k,i >q max i ∥ q k,i <q min i | d j = 0 . 0      |
+| Self-Collision             | C coll = 1 links intersect                  | d j = 0 . 0      |
+
+The Task-Oriented Rewards (Table I) provide the primary objective for the robot to follow commanded velocities. The core of our socially-aware behavior is shaped by the ComfortOriented Rewards (Table I).
+
+Based on studies of proxemics [35], [36], [37], [38], [39], we introduce a Proxemic Comfort reward, where d social is the ideal social distance of 1.2 meters. This reward encourages the robot to maintain this distance from a person ( d human), peaking at the desired distance and decreasing as the robot gets either closer or farther away. To ensure motions are perceived as non-threatening, we penalize the dynamics of approach towards any obstacle (including people), a concept supported by research on speed and separation monitoring. The Safe Approach Velocity and Safe Approach Accel terms penalize the components of velocity v k and acceleration a k that are normal to the nearest obstacle surface (where η k is the surface normal vector pointing away from the obstacle). This discourages the robot from moving directly and rapidly towards obstacles. Complementing this, the Tangential Avoidance reward encourages the robot's velocity vector ˆ v k to be perpendicular to the direction of the nearest obstacle ˆ d obs ,k , promoting smoother, arcing avoidance maneuvers rather than abrupt stops. Finally, Motion Smoothness terms penalize high joint accelerations to ensure overall motion fluency, a key factor in perceived safety .
+
+2) Cost Functions: Costs define the hard safety boundaries of S unsafe and are used for the CMDP constraints. These represent conditions that must be strictly avoided.
+
+As shown in Table I, the Safety Distance Violation cost is a binary penalty triggered if the distance to any obstacle D obs ,k falls below the hard safety margin d safe = 0 . 8 meters. This forms the primary definition of the unsafe state space, S unsafe . Additional costs for violating joint and torque limits, as well as for self-collision, are included to ensure the physical integrity of the robot. These costs are handled by the P3O algorithm to stringently enforce safe operation.
+
+## D. Training with P3O
+
+To find an optimal policy that maximizes the task reward subject to the safety and physical cost constraints, we employ the Normalized Penalized Proximal Policy Optimization (P3O) algorithm. P3O is a first-order constrained RL method recognized for its stability and practical effectiveness in robotics. It augments the PPO objective with a penalty term for each constraint violation:
+
+<!-- formula-not-decoded -->
+
+Here, κ j is a tunable hyperparameter weighting the penalty for the j -th constraint. The term L CLIP,N R is the standard PPO clipped objective using normalized reward advantages. The violation term for each cost, L VIOL,N C j , is what connects the instantaneous cost C j to the policy update:
+
+<!-- formula-not-decoded -->
+
+where J C j ( π θ ) = E [ ∑ ∞ k =0 γ k C j,k ] is the expected cumulative cost, and L CLIP,N C j is its clipped advantage estimate. µ C j and σ C j are the mean and standard deviation of the un-normalized cost advantages calculated from the batch of samples for the j -th constraint. d j is the predefined threshold for the j -th cost constraint. γ is the discount factor.
+
+## V. EXPERIMENTS
+
+We conduct a series of experiments in both high-fidelity simulation and on the physical Unitree G1 humanoid robot to validate the proposed end-to-end locomotion policy. Our evaluations are designed to test the policy's effectiveness in three key areas: robust navigation in complex 3D environments, principled safety enforcement, and the generation of comfortable, socially aware motions.
+
+## A. Experimental Setup
+
+- Robot Platform: The experiments utilize the Unitree G1 humanoid robot, equipped with a Livox Mid-360 LiDAR for 3D environmental perception. The learned policy operates end-to-end, directly mapping raw LiDAR point clouds and proprioceptive state information to lowlevel motor commands.
+- Simulation Environment: All policies are trained exclusively in NVIDIA Isaac Sim[40] and sim2sim in Genesis[41], a high-fidelity robotics simulator. We employ domain randomization and a structured curriculum, progressively increasing the complexity of obstacles to ensure robust sim-to-real transfer.
+
+## B. Ablation Study
+
+To demonstrate the efficacy of our approach, we compare our proposed method against two well-chosen baselines that ablate key components of our framework. Ours (P3O-CBF): The full proposed policy, trained with P3O using the CBFbased cost functions and the full suite of comfort-oriented rewards. PPO-RewardShaping: Safety is attempted solely by adding a negative reward term that penalizes proximity to obstacles. P3O : A P3O policy is same as P3O-CBF but trained without Comfort-Oriented reward.
+
+Fig. 3. Qualitative comparison of trajectories from the ablation study in a static obstacle course.
+
+<!-- image -->
+
+The ablation study highlights the clear advantage of using a principled, dynamics-aware constraint. As shown in Fig. 3, the PPO(Orange) policy produces an aggressive trajectory, demonstrating the difficulty of ensuring safety through reward shaping alone. This policy frequently fails by either colliding with obstacles or becoming overly conservative and failing to progress.
+
+The P3O(Green) policy performs better than PPO due to the explicit safety constraint. However, its path is still reactive and close to the obstacles. Because its cost function is only based on distance, it tends to act only when a safety violation is imminent, resulting in less efficient and jerky maneuvers.
+
+In contrast, our proposed P3O-CBF(Blue) policy generates a visibly smoother and safer path. By incorporating a cost function based on CBF principles, which account for the robot's dynamics, the policy learns to anticipate future states. It proactively initiates avoidance maneuvers, resulting in wider turns and a consistently larger safety margin. This leads to the highest success rate and superior comfort metrics, demonstrating that the dynamics-aware cost function is critical for achieving robust, safe, and smooth locomotion.
+
+- 1) Analysis of Safety and Comfort: We conducted 10 test runs for each policy in a 6-meter-long task space populated with random static obstacles, as depicted in Fig. 3. To evaluate performance, we measured the total time the robot spent in two critical regions: the "Unsafe Space," where the distance to an obstacle is less than 0.6m, and the "Uncomfortable Space But Safe," (distance between 0.6m and 1.2m).
+
+TABLE II SAFETY AND COMFORT VIOLATION TIMES (IN SECONDS)
+
+| Policy            | Time in Unsafe Space ( D obs < 0 . 6 m)   | Time in Uncomfortable Space ( 0 . 6 ≤ D obs < 1 . 2 m)   |
+|-------------------|-------------------------------------------|----------------------------------------------------------|
+| PPO-RewardShaping | 1.7 s                                     | 3.4 s                                                    |
+| P3O               | 1.2 s                                     | 3.1 s                                                    |
+| P3O-CBF(Ours)     | 0.8 s                                     | 2.2 s                                                    |
+
+The results, summarized in Table II, show that relying on reward shaping alone is insufficient for ensuring robust safety and comfort. The standard P3O policy improved upon this by using an explicit safety constraint, reducing the time spent in the unsafe zone by approximately 30%.
+
+Our proposed P3O-CBF method, which includes comfortoriented rewards, yielded the best performance. It not only minimized the time spent in the unsafe zone (a 53% reduction compared to PPO) but also significantly reduced the time spent in the caution zone. This indicates that the comfortoriented rewards successfully encourage the policy to maintain a larger, more socially acceptable distance from obstacles, rather than simply skirting the edge of the hard safety boundary. These quantitative findings, combined with the qualitatively superior trajectories shown in Fig. 3, validate the effectiveness of our combined approach for generating locomotion that is both safe and comfortable.
+
+## C. Evaluation Scenarios
+
+The policies are evaluated in a series of challenging simulation scenarios, with the final policy also validated on the physical robot. Each scenario is designed to test a specific capability of our framework.
+
+The success rates for each policy across the 30 trials per scenario are presented in Table III. The results clearly demonstrate the superiority of the proposed P3O-CBF framework, especially in the most challenging scenarios.
+
+TABLE III SUCCESS RATES (%) OF POLICIES ACROSS EVALUATION SCENARIOS
+
+| Scenario                    | PPO-RewardShaping   | P3O   | Ours (P3O-CBF)   |
+|-----------------------------|---------------------|-------|------------------|
+| (a) Suspended Obstacle      | 20%                 | 90%   | 83%              |
+| (b) Narrow Passage          | 0%                  | 33%   | 60%              |
+| (c) Cluttered Static Course | 93%                 | 100%  | 100%             |
+| (d) Dynamic Agents          | 56%                 | 70%   | 86%              |
+
+In the Suspended Obstacle scenario, the PPO policy largely fails (20% success), as its simple reward-based avoidance struggles with the non-standard threat. Both P3O methods perform well, confirming the benefit of explicit constraints for 3D navigation.
+
+Fig. 4. Illustration of the diverse and challenging evaluation scenarios designed. The red concentric circles represent the LiDAR sensor field. (a) Suspended Obstacle : The robot must exhibit full-body awareness to navigate under a low-hanging platform, a task where 2D elevation maps would fail. (b) Narrow Passage : The policy is tested in a confined corridor, requiring precise lateral control to avoid collisions. (c) Cluttered Static Course : The robot navigates a dense field of static pillars, testing its pathfinding in complex environments. (d) Dynamic Agents : The robot demonstrates reactive avoidance while maneuvering among multiple moving humanoids, simulating a crowded, interactive space.
+
+<!-- image -->
+
+The benefit of our CBF-based formulation becomes most apparent in the Narrow Passage and Dynamic Agents scenarios. In the narrow passage, the PPO policy fails entirely (0%), while our P3O-CBF policy (60%) nearly doubles the success rate of the P3O with a simple cost (33%). This suggests that the comfort-oriented reward helps prevent oscillations and over-corrections that lead to collisions in confined spaces. Similarly, when faced with dynamic agents, our method's 86% success rate significantly outperforms the more reactive P3O (70%) and PPO (56%) policies.
+
+## D. Physical Tests
+
+To validate the sim-to-real transfer of our trained policy, we conducted physical experiments on the Unitree G1 humanoid robot in two challenging real-world scenarios. All computations, including perception and policy inference, were performed in real-time on the robot's onboard computer.
+
+The first scenario, shown in Fig. 5, tested the policy's core obstacle-avoid capabilities in a cluttered laboratory environment. The robot was commanded to walk through a space populated with various static obstacles. As demonstrated, the policy successfully leveraged its 3D LiDAR perception to maneuver through the complex arrangement without collisions. The second, more demanding scenario tested the policy's reactivity and safety in a dynamic human-robot interaction context. As shown in Fig. 6, a human agent would suddenly approach the robot from behind. This successful avoidance of an unexpected, dynamic threat underscores the robustness of the learned safety constraints and the effectiveness of the end-to-end framework for real-world deployment.
+
+## VI. CONCLUSIONS
+
+In this paper, we presented an end-to-end framework for humanoid locomotion that addresses the critical challenges of safety, 3D perception, and human-centric comfort. By leveraging raw LiDAR data, our policy circumvents the
+
+Fig. 5. Real-world deployment in a cluttered environment.
+
+<!-- image -->
+
+Fig. 6. Demonstration of reactive avoidance to a sudden human approach.
+
+<!-- image -->
+
+limitations of blind and 2D-vision-based controllers, enabling robust navigation in environments with complex 3D obstacles. Our primary contribution is a principled method for integrating the safety guarantees of CBFs into a modelfree, constrained reinforcement learning framework. The experimental results validate the efficacy of this approach. Quantitative analysis demonstrated that our proposed P3OCBF policy significantly outperforms standard PPO and a P3O baseline with a simpler cost function, achieving higher success rates in dynamic and narrow passage scenarios while minimizing time spent in unsafe zones. Furthermore, our ablation studies confirmed that the inclusion of HRI-inspired comfort rewards effectively guides the robot to maintain larger, more socially acceptable distances, resulting in smoother and more predictable motion. Through successful sim-to-real deployment, this work demonstrates a significant step towards developing humanoid robots that are not only dynamically capable but also perceptive, safe, and socially aware, making them better suited for real-world human environments.
+
+## REFERENCES
+
+[1] G. B. Margolis and P. Agrawal, 'Walk these ways: Tuning robot control for generalization with multiplicity of behavior,' Conference on Robot Learning , 2022.
+
+- [2] G. Margolis, G. Yang, K. Paigwar, T. Chen, and P. Agrawal, 'Rapid locomotion via reinforcement learning,' in Robotics: Science and Systems , 2022.
+- [3] J. Hwangbo, J. Lee, A. Dosovitskiy, D. Bellicoso, V. Tsounis, V. Koltun, and M. Hutter, 'Learning agile and dynamic motor skills for legged robots. sci,' Robotics , vol. 4, p. 26, 2019.
+- [4] X. Cheng, K. Shi, A. Agarwal, and D. Pathak, 'Extreme parkour with legged robots,' in 2024 IEEE International Conference on Robotics and Automation (ICRA) . IEEE, 2024, pp. 11 443-11 450.
+- [5] Z. Zhuang, S. Yao, and H. Zhao, 'Humanoid parkour learning,' arXiv preprint arXiv:2406.10759 , 2024.
+- [6] Z. Zhuang, Z. Fu, J. Wang, C. Atkeson, S. Schwertfeger, C. Finn, and H. Zhao, 'Robot parkour learning,' arXiv preprint arXiv:2309.05665 , 2023.
+- [7] J. Lee, M. Bjelonic, A. Reske, L. Wellhausen, T. Miki, and M. Hutter, 'Learning robust autonomous navigation and locomotion for wheeledlegged robots,' Science Robotics , vol. 9, no. 89, p. eadi9641, 2024.
+- [8] B. Langmann, K. Hartmann, and O. Loffeld, 'Depth camera technology comparison and performance evaluation,' in International Conference on Pattern Recognition Applications and Methods , vol. 2. SciTePress, 2012, pp. 438-444.
+- [9] H. Song, W. Choi, and H. Kim, 'Robust vision-based relativelocalization approach using an rgb-depth camera and lidar sensor fusion,' IEEE Transactions on Industrial Electronics , vol. 63, no. 6, pp. 3725-3736, 2016.
+- [10] H. Zhong, H. Wang, Z. Wu, C. Zhang, Y. Zheng, and T. Tang, 'A survey of lidar and camera fusion enhancement,' Procedia Computer Science , vol. 183, pp. 579-588, 2021.
+- [11] T. Miki, L. Wellhausen, R. Grandia, F. Jenelten, T. Homberger, and M. Hutter, 'Elevation mapping for locomotion and navigation using gpu,' in 2022 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) . IEEE, 2022, pp. 2273-2280.
+- [12] P. Fankhauser, M. Bloesch, C. Gehring, M. Hutter, and R. Siegwart, 'Robot-centric elevation mapping with uncertainty estimates,' in Mobile Service Robotics . World Scientific, 2014, pp. 433-440.
+- [13] A. Souza and L. M. Gonçalves, 'Occupancy-elevation grid: an alternative approach for robotic mapping and navigation,' Robotica , vol. 34, no. 11, pp. 2592-2609, 2016.
+- [14] Z. Wang, T. Ma, Y. Jia, X. Yang, J. Zhou, W. Ouyang, Q. Zhang, and J. Liang, 'Omni-perception: Omnidirectional collision avoidance for legged locomotion in dynamic environments,' arXiv preprint arXiv:2505.19214 , 2025.
+- [15] T. He, C. Zhang, W. Xiao, G. He, C. Liu, and G. Shi, 'Agile but safe: Learning collision-free high-speed legged locomotion,' in Robotics: Science and Systems (RSS) , 2024.
+- [16] Z. Fu, A. Kumar, A. Agarwal, H. Qi, J. Malik, and D. Pathak, 'Coupling vision and proprioception for navigation of legged robots,' in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2022, pp. 17 273-17 283.
+- [17] N. Bohórquez, A. Sherikov, D. Dimitrov, and P.-B. Wieber, 'Safe navigation strategies for a biped robot walking in a crowd,' in 2016 IEEE-RAS 16th International Conference on Humanoid Robots (Humanoids) . IEEE, 2016, pp. 379-386.
+- [18] N. Mitsunaga, C. Smith, T. Kanda, H. Ishiguro, and N. Hagita, 'Adapting robot behavior for human-robot interaction,' IEEE Transactions on Robotics , vol. 24, no. 4, pp. 911-916, 2008.
+- [19] E. Rodriguez-Lizundia, S. Marcos, E. Zalama, J. Gómez-GarcíaBermejo, and A. Gordaliza, 'A bellboy robot: Study of the effects of robot behaviour on user engagement and comfort,' International Journal of Human-Computer Studies , vol. 82, pp. 83-95, 2015.
+- [20] W. Wang, Y. Chen, R. Li, and Y. Jia, 'Learning and comfort in humanrobot interaction: A review,' Applied Sciences , vol. 9, no. 23, p. 5152, 2019.
+- [21] M. Becker, D. Mahr, and G. Odekerken-Schröder, 'Customer comfort during service robot interactions,' Service Business , vol. 17, no. 1, pp. 137-165, 2023.
+- [22] D. Hoeller, N. Rudin, D. Sako, and M. Hutter, 'Anymal parkour: Learning agile navigation for quadrupedal robots,' Science Robotics , vol. 9, no. 88, p. eadi7566, 2024.
+- [23] Z. Wang, Y. Jia, L. Shi, H. Wang, H. Zhao, X. Li, J. Zhou, J. Ma, and G. Zhou, 'Arm-constrained curriculum learning for loco-manipulation of a wheel-legged robot,' in 2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) . IEEE, 2024, pp. 10 77010 776.
+- [24] E. Chane-Sane, J. Amigo, T. Flayols, L. Righetti, and N. Mansard, 'Soloparkour: Constrained reinforcement learning for visual locomotion from privileged experience,' in Conference on Robot Learning (CoRL) , 2024.
+- [25] Z. Xu, X. Han, H. Shen, H. Jin, and K. Shimada, 'Navrl: Learning safe flight in dynamic environments,' IEEE Robotics and Automation Letters , vol. 10, no. 4, pp. 3668-3675, 2025.
+- [26] L. Brunke, M. Greeff, A. W. Hall, Z. Yuan, S. Zhou, J. Panerati, and A. P. Schoellig, 'Safe learning in robotics: From learning-based control to safe reinforcement learning,' Annual Review of Control, Robotics, and Autonomous Systems , vol. 5, no. 1, pp. 411-444, 2022.
+- [27] S. Gu, L. Yang, Y. Du, G. Chen, F. Walter, J. Wang, and A. Knoll, 'A review of safe reinforcement learning: Methods, theory and applications,' arXiv preprint arXiv:2205.10330 , 2022.
+- [28] L. Zhang, L. Shen, L. Yang, S. Chen, B. Yuan, X. Wang, and D. Tao, 'Penalized proximal policy optimization for safe reinforcement learning,' arXiv preprint arXiv:2205.11814 , 2022.
+- [29] A. Wachi and Y. Sui, 'Safe reinforcement learning in constrained markov decision processes,' in International Conference on Machine Learning . PMLR, 2020, pp. 9797-9806.
+- [30] M. Desai and A. Ghaffari, 'Clf-cbf based quadratic programs for safe motion control of nonholonomic mobile robots in presence of moving obstacles,' in 2022 IEEE/ASME International Conference on Advanced Intelligent Mechatronics (AIM) . Ieee, 2022, pp. 16-21.
+- [31] A. Manjunath and Q. Nguyen, 'Safe and robust motion planning for dynamic robotics via control barrier functions,' in 2021 60th IEEE Conference on Decision and Control (CDC) . IEEE, 2021, pp. 21222128.
+- [32] J. Choi, F. Castaneda, C. J. Tomlin, and K. Sreenath, 'Reinforcement learning for safety-critical control under model uncertainty, using control lyapunov functions and control barrier functions,' arXiv preprint arXiv:2004.07584 , 2020.
+- [33] Y. Emam, G. Notomista, P. Glotfelter, Z. Kira, and M. Egerstedt, 'Safe reinforcement learning using robust control barrier functions,' IEEE Robotics and Automation Letters , 2022.
+- [34] A. Agrawal and K. Sreenath, 'Discrete control barrier functions for safety-critical control of discrete systems with application to bipedal robot navigation.' in Robotics: Science and Systems , vol. 13. Cambridge, MA, USA, 2017, pp. 1-10.
+- [35] W. Wang, Y. Chen, R. Li, and Y. Jia, 'Learning and comfort in human-robot interaction: A review,' Applied Sciences , vol. 9, no. 23, 2019. [Online]. Available: https://www.mdpi.com/2076-3417/9/23/5152
+- [36] M. Rubagotti, I. Tusseyeva, S. Baltabayeva, D. Summers, and A. Sandygulova, 'Perceived safety in physical human-robot interaction-a survey,' Robotics and Autonomous Systems , vol. 151, p. 104047, 2022. [Online]. Available: https://www.sciencedirect.com/ science/article/pii/S0921889022000173
+- [37] L. Takayama and C. Pantofaru, 'Influences on proxemic behaviors in human-robot interaction,' in 2009 IEEE/RSJ international conference on intelligent robots and systems . IEEE, 2009, pp. 5495-5502.
+- [38] P. A. Lasota, G. F. Rossano, and J. A. Shah, 'Toward safe closeproximity human-robot interaction with standard industrial robots,' in 2014 IEEE International Conference on Automation Science and Engineering (CASE) , 2014, pp. 339-344.
+- [39] Y. Kim and B. Mutlu, 'How social distance shapes human-robot interaction,' International Journal of Human-Computer Studies , vol. 72, no. 12, pp. 783-795, 2014.
+- [40] M. Mittal, C. Yu, Q. Yu, J. Liu, N. Rudin, D. Hoeller, J. L. Yuan, R. Singh, Y. Guo, H. Mazhar, A. Mandlekar, B. Babich, G. State, M. Hutter, and A. Garg, 'Orbit: A unified simulation framework for interactive robot learning environments,' IEEE Robotics and Automation Letters , vol. 8, no. 6, pp. 3740-3747, 2023.
+- [41] G. Authors, 'Genesis: A universal and generative physics engine for robotics and beyond,' December 2024. [Online]. Available: https://github.com/Genesis-Embodied-AI/Genesis

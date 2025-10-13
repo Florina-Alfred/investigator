@@ -1,0 +1,581 @@
+## LA-IMR: Latency-Aware, Predictive In-Memory Routing &amp; Proactive Autoscaling for Tail-Latency-Sensitive Cloud Robotics
+
+Eunil Seo ∗ , Chanh Nguyen ∗ , Erik Elmroth ∗ ∗ Department of Computing Science, Ume˚ a University, 90187 Ume˚ a, Sweden Email: { eunil.seo, chanh, elmroth } @cs.umu.se
+
+Abstract -Hybrid cloud-edge infrastructures now support latency-critical workloads ranging from autonomous vehicles and surgical robotics to immersive AR/VR. However, they continue to experience crippling long-tail latency spikes whenever bursty request streams exceed the capacity of heterogeneous edge and cloud tiers. To address these long-tail latency issues, we present Latency-Aware, Predictive In-Memory Routing and Proactive Autoscaling (LA-IMR). This control layer integrates a closedform, utilization-driven latency model with event-driven scheduling, replica autoscaling, and edge-to-cloud offloading to mitigate 99th-percentile (P99) delays. Our analytic model decomposes endto-end latency into processing, network, and queuing components, expressing inference latency as an affine power-law function of instance utilization. Once calibrated, it produces two complementary functions that drive: (i) millisecond-scale routing decisions for traffic offloading, and (ii) capacity planning that jointly determines replica pool sizes. LA-IMR enacts these decisions through a quality-differentiated, multi-queue scheduler and a custom-metric Kubernetes autoscaler that scales replicas proactively-before queues build up-rather than reactively based on lagging CPU metrics. Across representative vision workloads (YOLOv5m and EfficientDet) and bursty arrival traces, LA-IMR reduces P99 latency by up to 20.7% compared to traditional latency-only autoscaling, laying a principled foundation for nextgeneration, tail-tolerant cloud-edge inference services.
+
+Index Terms -hybrid cloud-edge computing, tail-latency mitigation, predictive autoscaling, in-memory routing, SLO-aware scheduling, edge offloading, latency modeling, microservice architecture, Kubernetes HPA, 99th-percentile (P99) latency.
+
+## I. INTRODUCTION
+
+Mitigating long-tail latency in hybrid cloud-edge systems is increasingly critical as these environments scale in complexity [1], [2]. Workloads span a heterogeneous continuum-from high-accuracy, resource-intensive cloud models to lightweight, low-latency edge models-making it challenging to meet strict worst-case latency targets like P99 [3]. While average latency is well studied, rare yet severe spikes can deteriorate user trust and degrade performance [4], [5]. These long-tail anomalies are particularly harmful in mission-critical applications such as autonomous vehicles, industrial automation, and medical robotics [6], [7].
+
+This work introduces an SLO-aware, in-memory control loop that sits inside a tiered microservice architecture. As illustrated in Fig. 1, inference is decomposed into lightweight edge models for low-latency requests and high-accuracy cloud
+
+.
+
+Fig. 1: LA-IMR: an in-memory SLO-aware controller that routes requests across edge-cloud tiers.
+
+<!-- image -->
+
+models for precision tasks. The controller steers each request to the corresponding tier that can enable its SLO-or pre-emptively off-loads it upstream when an early-warning spike is detected-thereby suppressing tail-latency anomalies.
+
+The LA-IMR router maintains all telemetry data-including the EWMA-smoothed arrival rate, queue depth, and utilization-in process memory, updating it with every request. At the first sign of a load spike, it either (1) scales replicas using Kubernetes HPA or (2) defers excess traffic to the cloud or a faster upstream tier, thereby mitigating P99 latency. Since no external cache (e.g., Redis [8]) is involved, these decisions incur only microseconds of access time, enabling millisecondlevel responses that are essential for handling bursty, latencycritical workloads in highly latency-sensitive scenarios [9], [10].
+
+We introduce a closed-form, end-to-end latency model that predicts the response time of any inference request routed through an edge-cloud continuum. The model decomposes latency into three components: (i) an inference-processing term that scales with instance utilization according to an affine power law, (ii) a task-agnostic network round-trip time
+
+(RTT), and (iii) an analytically derived M/M/c queuing delay. Calibrated using only three parameters per hardware tier-the model's reference latency L m , the hardware speed-up S m,i , and a super-linearity exponent γ -the model effectively captures how latency increases under bursty loads, heterogeneous hardware, and varying replica counts. Extensive measurements demonstrate that this single equation tracks observed latencies within a few percent across a wide operational range, enabling the runtime to anticipate SLO violations and to support proactive routing, autoscaling, and offloading decisions throughout the system.
+
+By combining proactive latency-spike detection with utilization-driven autoscaling and real-time, in-memory telemetry, LA-IMR adapts within milliseconds to traffic bursts or faults, shrinking long-tail latency and bolstering overall system reliability. Building on this foundation, our work contributes:
+
+- 1) Closed-form, dual-purpose latency model . We derive a single analytic equation that decomposes end-to-end delay into processing, network, and M / M / c queuing terms and captures super-linear contention with one exponent. Two complementary instantiations-fixed-replica g m,i ( λ ) and fixed-traffic g m,i ( N m,i ) -drive millisecond-scale routing decisions as well as slower capacity-planning optimisation.
+- 2) Tail-aware, quality-stratified request routing . LA-IMR is an event-driven, in-memory controller that predicts imminent P99 breaches, routes requests across latency/accuracy-differentiated queues, and pre-emptively offloads traffic or instantiates replicas before long-tail spikes materialise.
+- 3) Proactive autoscaling from model-predicted metrics . By exporting the required replica count, as computed from the latency model, as a custom Kubernetes metric, the system eliminates the 60-120s lag and oscillations of CPU-driven HPA, scaling just-in-time to keep queues short.
+- 4) Empirical gains on bursty vision workloads . Experiments with YOLOv5m and EfficientDet under bursty traces show that LA-IMR trims P99 latency by up to 20.7%, confirming the practical impact of the theory-driven design.
+
+This work presents LA-IMR, an SLO-aware control layer that proactively routes, scales, and off-loads AI inference to suppress long-tail latency in hybrid edge-cloud systems: Section II surveys related tail-latency and resource-allocation work; Section III formalises a closed-form latency model and optimisation framework; Section IV details the LA-IMR architecture-multi-queue scheduler, predictive router, and custom-metric Kubernetes autoscaler; Section V demonstrates up to 20.7% P99-latency reductions under bursty loads; and Section VI sketches future paths toward resilient, tail-tolerant AI services.
+
+## II. RELATED WORK
+
+## A. Tail Latency Mitigation
+
+Early work formulated long-tail delay as a fault to be masked rather than eliminated. C3 steers reads toward the fastest-responding replica while throttling overly aggressive clients, trimming the 99th-percentile (P99) latency without global coordination [1]. In large fan-out services, Dean and Barroso advocate hedged or tied requests so that a straggler no longer determines end-to-end response time [2]. These 'speculative' techniques are powerful, yet they operate after latency inflation has already begun and provide little guidance on resource sizing.
+
+More recent systems push decision making inside the service graph. GrandSLAm predicts per-stage completion times, then reorders or batches microservice calls to respect job-level SLAs while sustaining throughput [3]. Complementary edge-cloud frameworks model DNN inference pipelines and split them across heterogeneous hardware to keep worst-case delay bounded under fluctuating bandwidth and load [4], [5], [11], [12]. These platforms, however, typically rely on threshold-based autoscalers or coarse queue metrics, which react only after the utilisation spike is visible.
+
+Offloading augments local scheduling by opportunistically handing work to faster or less-loaded tiers. Queue-length-aware fog dispatchers [13], partial offload optimisers that jointly minimise energy and latency [14], and reinforcement-learning controllers for mobile MEC [9] all illustrate the benefit of decoupling execution sites. Extensions with IRS-assisted channels [6], dependency-aware scheduling [7], or sub-task partitioning [10] further reduce tail variance, yet they rarely couple the offloading trigger to a predictive latency model that spans processing, network, and queueing effects.
+
+LA-IMR bridges these gaps by (i) deriving a closed-form, utilisation-driven latency law that can be evaluated in microseconds, (ii) embedding that model in an event-driven multi-queue router that makes per-request routing and offloading decisions, and (iii) exporting a custom metric to Kubernetes so replicas scale proactively , before queues build.
+
+## B. Autoscaling and Resource Management
+
+Early autoscalers blended queueing theory with thresholds: Gandhi et al. 's M/M/n look-ahead rules cut SLA violations [15], while Chen et al. replaced fixed rules with deep RL that adjusts VMs pre-emptively [16]. Cluster managers added isolation-Borg's priority quotas shield latency-critical jobs [17], and Caron et al. predict HPC congestion for just-in-time node scaling [18]. With microservices, attention shifted to per-service replicas: Sharma et al. 's online learner drives Kubernetes HPA [19], and Ali et al. [20] plus Kojima et al. [21] use control-theoretic or ML predictors to tame P99 spikes. These schemes remain reactive , relying on lagging CPU/queue metrics. LA-IMR, by contrast, employs a closed-form utilisation-driven model to forecast SLO breaches milliseconds ahead, trigger event-driven routing, and feed custom replica targets to Kubernetes before tail latency surfaces.
+
+## C. In-Memory Processing and Dynamic Routing
+
+Prior efforts to address tail-latency spikes have converged on three leversin-memory state, dynamic off-loading, and fine-grained replica control -yet none unifies them under a single, predictive model as LA-IMR does. Heracles partitions cores, memory, and caches to confine interference in data centers but reacts only to coarse CPU counters and cannot forecast SLO breaches ahead of time [22]. FaRM and FASTER push the latency floor lower with RDMA-backed and hybrid in-memory KV stores, respectively, yet treat queue build-up as an application concern rather than a first-class control signal [23], [24]. Work that couples in-memory scheduling with dynamic placement is closer to ours: Qin et al. . Colocate analytics operators and data to absorb bursts [25], Neurosurgeon splits DNN layers between mobile and cloud to shorten response paths [26], EdgeKV proactively slops hotkeys to neighboring edges [27], and Li et al. redirect queued tasks once a backlog is detected [28].
+
+LA-IMR extends this lineage by (i) holding all routing telemetry in process memory for sub-millisecond decisions, (ii) predicting per-replica latency with a calibrated utilization model so replicas can be prepared to begin before queues surge, and (iii) integrating offloading, routing, and autoscaling into one event-driven loop.
+
+## D. Cloud Robotics
+
+Object detection in cloud robotics balances accuracy against latency amid bursty, location-dependent demand. High-precision detectors such as Faster and Mask R-CNN excel in the cloud but suffer multi-hundred-millisecond delays when GPU queues saturate [29]. Conversely, edge-optimised one-stage models (e.g., EfficientDet, MobileNet-SSD) return sub-50ms results on lightweight devices, yet their lower mAP limits use in safety-critical contexts [30]. Foundational work-from R-CNN through PASCAL VOC-still guides model-selection policy [31], [32], and Huang et al. showed that no single network meets all SLOs across traffic regimes [33].
+
+Traditional cloud-edge schedulers rely on coarse utilisation thresholds, scaling only after queues build, which drives P99 latencies to exceed the mean by more than 5× during bursts [1], [2]. LA-IMR embeds a closed-form, utilisation-aware latency model and a quality-differentiated multi-queue scheduler directly in the inference path. It scales replicas or off-loads traffic proactively , maintaining task-level P99 within SLOs despite workload spikes, fluctuating RTT, and hardware heterogeneity-offering a principled antidote to tail-latency anomalies in cloud-robotic perception.
+
+## III. SYSTEM MODEL AND PROBLEM FORMULATION
+
+Inspired by foundational research on latency modeling and resource allocation in edge-cloud environments, particularly the surveys conducted by Mao et al. [34], [35]-we develop a closed-form latency expression specifically adapted to our multi-replica hybrid infrastructure. This formulation incorporates conventional latency factors such as computation, communication, and queuing delays, while also integrating empirical latency patterns drawn from recent experimental analyses [36], [37].
+
+## A. Latency Components
+
+The end-to-end latency experienced by a task t ∈ T is the sum of processing, network, and queuing delays:
+
+<!-- formula-not-decoded -->
+
+where
+
+- L infer m,i -inference processing delay : latency of model m when served by instance i under its current load;
+- D net t,i -network (RTT) delay : round-trip data-transfer latency between the data source and instance i ;
+- Q t,i -queuing delay : waiting time in the input queue of instance i before execution begins.
+
+TABLE I: Notation Table
+
+| Symbol                                    | Description                                                                                                                                                                                                                                                                                                          |
+|-------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| L m S m,i λ m N m,i R m R max i B i γ > 1 | Mean latency of model m on the CPU baseline Speed-up of instance i for model m Aggregate arrival rate for model m Replica count of model m on instance i Mean compute time per request of model m Sustainable compute budget of instance i Background (co-tenant) load on instance i Empirical super-linear exponent |
+
+## B. Entities and Notation
+
+1) Inference tasks.: The set of independent inference tasks is T = { 1 , . . . , T } . Each task t specifies an accuracy requirement α req t and, optionally, a latency service-level objective (SLO) τ t .
+
+2) Inference models.: The catalogue of ML models is M = { 1 , . . . , M } . Every model m ∈ M is described by
+
+- L infer m , steady-state inference latency on a reference device;
+- a m ∈ [0 , 1] , steady-state accuracy;
+- R m , per-inference resource demand (e.g., CPU-seconds).
+
+Instance offers a per-inference CPU budget
+
+model
+
+m
+
+i
+
+executes on instance
+
+R
+
+max
+
+i
+
+. When
+
+i
+
+its measured latency is
+
+L
+
+infer m,i
+
+as in Eq. (5). We track two canonical computer-vision backbones:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+Their steady-state inference latencies and CPU demands on a Raspberry Pi 4 are summarised in Table II. Note that the lightweight EfficientDe is nearly two orders of magnitude cheaper in R m than the heavier YOLOv5m.
+
+TABLE II: Model profile on a reference edge instance provisioned with a Raspberry Pi 4 VM configured with 3 CPU cores. R m is expressed in CPU-seconds per inference; L infer m is the steady-state latency ( ± std. err.).
+
+| Model                | L infer m [s]           |   R m [CPU-s] |
+|----------------------|-------------------------|---------------|
+| EfficientDet ( m 1 ) | 0 . 09 ± 1 . 2 × 10 - 3 |           0.1 |
+| YOLOv5m ( m 2 )      | 0 . 73 ± 3 . 0 × 10 - 3 |           1   |
+
+- 3) Hybrid Infrastructure as VM Instances: We consider an edge-cloud continuum provisioned as virtual machine instances. Hence
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+Their union yields the global instance set I = C ∪ E . Each instance 1 i ∈ I exposes a finite resource budget R max i (e.g., CPU-seconds, GPU-seconds) and may be subject to an exogenous background load B i .
+
+- 4) Decision Variable: The binary variable
+
+x t,m,i = { 1 , if task t is executed by model m on instance 0 , otherwise , encodes the joint model-selection and task-placement decision.
+
+- 5) Resource and Assignment Constraints: Each task must be assigned exactly once:
+
+<!-- formula-not-decoded -->
+
+The aggregate resource demand on each node shall not exceed its capacity:
+
+<!-- formula-not-decoded -->
+
+## C. Inference Processing Delay
+
+- a) Latency as a Function of Model Size : Nigade et al. [36] empirically observe that the inference latency of a deeplearning model grows sub-linearly with the input batch size. For a model m j with parameter file size s j and batch size b , the mean per-inference latency is
+
+<!-- formula-not-decoded -->
+
+where α is a hardware- and framework-dependent constant and 0 &lt; γ &lt; 1 captures the sub-linear batching benefit.
+
+- b) Utilisation-based Latency Model : Extending the principles of utilization-based performance modeling proposed by Wang et al. [34], [35] and inspired by hardware-performance scaling insights from Jouppi et al [37], we formulate the inference latency of model m running on instance i as a function of instance utilization U i :
+
+<!-- formula-not-decoded -->
+
+where
+
+- L m is the single-inference latency of model m on the reference hardware;
+- S m,i is the hardware speed-up factor of instance i for model m (Table III);
+- γ ≥ 0 controls how sharply latency rises as utilisation increases;
+
+1 While instance and replica are not strictly synonymous in Kubernetes-replica denotes the desired number of concurrently running pods-this work uses the terms interchangeably for simplicity and consistency in discussion.
+
+- U i is the instantaneous utilisation of instance i :
+
+<!-- formula-not-decoded -->
+
+Here:
+
+- λ m ′ is the arrival rate of model m ′ .
+- R m ′ is the resource consumption per inference for m ′ .
+- B i denotes the background (co-tenant) load on instance i .
+- R max i is the total capacity of instance i .
+
+i, The hardware scaling factor S m,i represents the hardwaredependent acceleration and is typically determined empirically. For example, Oh et al. [38] show that CPUs can be up to 20 times faster in certain scenarios, while Jouppi et al. [37] report that TPUs are approximately 15 to 30 times faster than contemporary GPUs (e.g., the NVIDIA K80). However, performance may vary significantly depending on the underlying technology and specific commercial hardware.
+
+To provide a conceptual understanding of the hardware scaling factor, this work approximates typical values, as summarized in Table III.
+
+- TABLE III: Typical scalability of hardware in singleand multi-instance scenarios.
+- c) Affine Power-Law Form : During calibration we vary only the traffic of the model under study and keep co-tenancy fixed. Writing the per-replica arrival rate as ˜ λ m,i = λ m /N m,i and expanding U γ i yields
+
+| Hardware Type   | Typical S m,i   |
+|-----------------|-----------------|
+| CPU             | 1               |
+| GPU             | 2-20            |
+| TPU             | 30-100+         |
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+with
+
+<!-- formula-not-decoded -->
+
+The baseline α i is the latency paid even at idle utilisation, whereas the second term β m,i ˜ λ γ m,i grows super-linearly once traffic increases.
+
+- d) Empirical Validation. : Table IV reports the measured mean per-inference latencies of YOLOv5m ( m 2 ) for different arrival rates λ m 2 and replica counts N m 2 ,i .
+
+Fig. 2 shows that Eq. (8), with calibrated parameters α i = 0 . 73 , β m,i =1 . 29 , and γ =1 . 49 , closely matches the measurements. Because the three parameters are re-estimated whenever the hardware mix ( S m,i , R max i ) or co-tenant load ( B i ) changes,
+
+TABLE IV: The actual latency given by λ m 2 = { 1 , 2 , 3 , 4 } and N m 2 ,i = { 1 , 2 , 4 } per replica (e.g., m 2 , YOLOv5m, 3 CPUs per replica) (seconds).
+
+|   N m,i | λ m = 1          | λ m = 2         | λ m = 3         | λ m = 4          |
+|---------|------------------|-----------------|-----------------|------------------|
+|       1 | 0 . 73 ± 0 . 004 | 4 . 97 ± 0 . 02 | 7 . 71 ± 0 . 03 | 10 . 46 ± 0 . 04 |
+|       2 | 0 . 73 ± 0 . 004 | 1 . 26 ± 0 . 19 | 3 . 76 ± 0 . 33 | 5 . 12 ± 0 . 53  |
+|       4 | 0 . 73 ± 0 . 004 | 0 . 90 ± 0 . 06 | 1 . 12 ± 0 . 12 | 1 . 77 ± 0 . 29  |
+
+the model remains accurate under a wide range of deployment conditions. Such predictive capability is valuable for proactive resource provisioning and request routing during workload fluctuations.
+
+Measured vs Predicted Inference Latency, Linfer m,
+
+<!-- image -->
+
+Fig. 2: The inference latency measured in the real operations and predicted by Eq. 8 with α i =0.73, β m,i = 1.29, and γ =1.49 (3 CPUs per replica).
+
+## D. Queueing Delay for Multi-Replica Services
+
+Let N m,i ∈ Z &gt; 0 denote the replica count of model m on instance i . With exponential inter-arrival and service times, the replica pool forms an M/M/ N m,i queue. The service rate is
+
+<!-- formula-not-decoded -->
+
+and the traffic intensity
+
+<!-- formula-not-decoded -->
+
+a) Load Distribution.: Tasks destined for model m arrive at rate λ m and are distributed among the N m,i replicas via round-robin or similar policies, yielding per-replica arrival rate
+
+<!-- formula-not-decoded -->
+
+b) M/M/ c Queue.: Assuming exponential inter-arrival and service times, each replica behaves as an M/M/ c queue with c = N m,i servers. Denoting the service rate by µ m,i = S m,i L infer m , the traffic intensity becomes ρ m,i = λ m N m,i µ m,i . Using ErlangC [39]
+
+<!-- formula-not-decoded -->
+
+the expected queueing delay becomes
+
+<!-- formula-not-decoded -->
+
+A task bound to exactly one ( m,i ) therefore experiences
+
+<!-- formula-not-decoded -->
+
+which collapses to the unique non-zero term selected by x t,m,i .
+
+## E. Task-level Queue Delay Selection
+
+Because each task is bound to exactly one ( m,i ) via (2), the queueing delay actually experienced by task t is the indicator-weighted sum
+
+<!-- formula-not-decoded -->
+
+which collapses to the unique non-zero term for the chosen pair.
+
+## F. Latency Function for Fixed Replica Layout
+
+When the replica counts { N m,i } are fixed , the per-instance end-to-end latency becomes an explicit function of the arrival-rate vector λ :
+
+<!-- formula-not-decoded -->
+
+with stability constraint ρ m,i &lt; 1 for all ( m,i ) .
+
+Substituting (15) into (1) yields the task-level latency
+
+<!-- formula-not-decoded -->
+
+Fig. 3 illustrates the service's latency characteristics across varying arrival rates λ = 1 , . . . , 6 with N m,i = 4 , revealing distinct behaviors for average, P95, and P99 latencies. The average latency increases gradually, reflecting growing queuing delays as load intensifies. In contrast, the P95 latency exhibits a steeper rise, indicating a broader spread in response times and the beginning of tail latency. The P99 latency escalates even more sharply, highlighting significant performance degradation under peak load conditions.
+
+## G. Per-Instance Latency as a Function of the Number of Replicas
+
+With the arrival-rate vector λ held fixed, the only degree of freedom left in the per-instance latency expression is the replica count N m,i . Making this dependence explicit gives
+
+<!-- formula-not-decoded -->
+
+Fig. 3: Latency metrics for user robot19 under varying arrival rates, showing super-linear growth in average, P95, and P99 latencies.
+
+<!-- image -->
+
+<!-- image -->
+
+<!-- image -->
+
+where
+
+<!-- formula-not-decoded -->
+
+Processing and network delays are unaffected by the replica count once λ is fixed. Queueing delay shrinks as N m,i grows because both the service-pool capacity N m,i µ m,i increases linearly and the utilisation ρ m,i ( N m,i ) falls hyperbolically.
+
+As an M / M /N m,i model is required, we adjust the factor C ( ρ, N ) by using the ErlangC formula:
+
+<!-- formula-not-decoded -->
+
+The marginal benefit of adding replicas is largest near the instability boundary ( N m,i µ m,i ≳ λ m ) and flattens rapidly once ρ m,i ≲ 0 . 3 . This shape is crucial for choosing a costoptimal replica layout that still satisfies latency SLOs.
+
+Therefore, we define the task-level latency by substituting (17) into
+
+<!-- formula-not-decoded -->
+
+yields a closed-form, differentiable objective that can be handed for automatic replica-layout tuning.
+
+## H. Optimisation Problems with Two Latency Models
+
+The latency of a request routed through replica group ( m,i ) can be expressed in two complementary closed-form models:
+
+<!-- formula-not-decoded -->
+
+Define the corresponding task-level latencies
+
+<!-- formula-not-decoded -->
+
+Two optimisation stages naturally arise.
+
+a) Workload routing ( fixed replica layout, N m,i ) : It is about a problem to route which replica is choosen out of the N m,i replicas. Given the current replica counts { N m,i } and arrival-rate vector λ , the router chooses x :
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+b) Capacity planning &amp; routing ( fixed traffic ): For longer-term provisioning the operator sizes the replica pools and chooses routing simultaneously:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+Here c m,i is the per-replica cost and β trades off latency versus spend.
+
+## IV. LATENCY-AWARE, PREDICTIVE IN-MEMORY ROUTING AND PROACTIVE AUTOSCALING (LA-IMR)
+
+Based on the sub-linear model proposed in §III-C and the instance utilisation-oriented delay expression in (15) and (17), We design a control layer that schedules, routes, and offloads requests so that tail-latency ( P 99 ) stays within each task's SLO τ t even under bursty traffic and heterogeneous hardware.
+
+Furthermore, the proposed LA-IMR framework leverages the modular nature of microservice architecture to improve overall service quality. By reducing tail latency-the slowest response times-it ensures more consistent and predictable system performance.
+
+LA-IMR comprises three tightly-coupled components:
+
+## A. Quality-Differentiated Multi-Queue Scheduler
+
+The SLO-Aware Inference Router maintains and monitors the status of the different SLO requests by using its corresponding queue at the code level, leading to the real-time monitoring and the early-latency spiks detection.
+
+To address diverse quality of service (QoS) requirements such as accuracy and latency - we decompose inference capabilities into specialized microservices aligned with following performance tiers:
+
+- Low-Latency Services (e.g., edge-optimized service like ultra-low latency): Lightweight models such as EfficientDet are deployed on resource-constrained edge nodes to support real-time, latency-sensitive tasks.
+- Balanced Services: Mid-range models such as YOLOv5m offer a trade-off between latency and accuracy, ideal for tasks with moderate performance demands.
+- Precision Services (e.g., accuracy-prioritized): Computationally heavier models such as Faster R-CNN run in the cloud, delivering high accuracy for use cases where latency is less critical.
+
+We partition traffic into quality classes Q = { Low-Latency , BALANCED , PRECISE } , each backed by an run-time queue Q q .
+
+- Low-Latency lane ( Low-Latency ) : latency-critical tasks use small-footprint EfficientDet-Lite0 streams and inherit the highest dispatch priority.
+- BALANCED lane ( BALANCED ) : accuracy-bound tasks are serviced by YOLO5m replicas and accept longer-but still bounded-delays.
+- PRECISE lane ( PRECISE ) : accuracy-bound tasks (e.g. fine-grained inspection) are serviced by R-CNN replicas.
+
+TABLE V: Comparison of YOLOv5m and EfficientDet-Lite0
+
+| Attribute    | YOLOv5m [40]         | EfficientDet-Lite0 [41]   |
+|--------------|----------------------|---------------------------|
+| Architecture | Ultralytics YOLOv5   | Google EfficientDet-Lite  |
+| Model Size   | 21.2M                | 4.3M                      |
+| mAP@0.5      | 64.1%                | ˜ 25%                     |
+| mAP@0.5:0.95 | 45.4%                | ˜ 20%                     |
+| Use Case     | Balanced performance | Edge/mobile efficiency    |
+
+Due to its high modularity, the microservice architecture offers several advantages over the monolithic service architecture, where all necessary services are deployed within a single instance. Fig.4 presents a comparison of the latency between the two architectures. Fig.4a shows the average latency, Fig.4b illustrates the 95th percentile (P95) latency, and Fig.4c presents the 99th percentile (P99) latency for both architectures. Overall, the microservice architecture demonstrates superior latency performance-especially when sufficient resources, such as an increased number of replicas N m,i , are available. This is primarily because context switching among different models imposes a higher burden on a monolithicbased instance.
+
+## B. SLO-Aware Adaptive Routing
+
+A dedicated SLO-Aware Inference Router (Fig. 1) dynamically forwards robotic and general inference requests to the most suitable micro-service tier. Each arriving request is represented as the tuple
+
+<!-- formula-not-decoded -->
+
+where m is the model, i the tier index, t the arrival time, and λ m [req / s] is the 1-s sliding-window arrival rate maintained in memory.
+
+Given the current replica layout { N m,i } and the instantaneous arrival-rate vector λ , the router executes the following steps:
+
+- i) Compute the model-specific latency budget : τ m = xL infer m with a global multiplier x&gt; 1 that budgets headroom for networking and queueing delays shown in Algorithm 1.
+2. ii) Predict per-instance latency : look up g m,i ( λ ) in an in-memory table pre-computed by the analytic model (§III-C,III-G) and refreshed every ∆ seconds.
+3. iii) Filter feasible replicas : retain only the pairs ⟨ m,i ⟩ whose predicted latency satisfies the SLO g m,i ( λ ) ≤ τ m .
+4. iv) Select the target replica : choose
+
+<!-- formula-not-decoded -->
+
+breaking ties by the lower cost c m,i to avoid unnecessary over-provisioning.
+
+- v) Enqueue the request : push r into the queue of tier i ⋆ . If no local replica meets the budget ( g m,i &gt; τ m ∀ i ), offload r to the upstream (faster or cloud) tier as prescribed by Algorithm 1.
+
+## C. Edge-Cloud Offloading &amp; Replica Autoscaling
+
+The SLO-Aware Inference Router detects the workload fluctuation and decide when to offload to the cloud and other edge service by using the per-instance latency determined by the inputs of the arrval rate and the current resource, such as the number of the replicas.
+
+The event-driven LA-IMR controller reacts on every incoming request instead of running at fixed intervals. It first computes a 1-second sliding-window arrival rate λ m to judge whether the just-arrived request would breach the latency SLO; if so, the request is immediately off-loaded to the faster/cloud tier. In parallel, it maintains an EWMA-smoothed accumulated rate λ accumul m that captures sustained demand. This second metric drives replica scaling and bulk off-load decisions, ensuring resources grow only when higher load persists and shrink when utilisation stays low shown in Fig. 5. By combining per-request mitigation with stable long-term control, the algorithm keeps tail-latency low while avoiding unnecessary resource oscillations, detailed in Algorithm 1.
+
+## D. Implementation of Dynamic Scaling in a Kubernetes Environment
+
+We realise the replica decisions of Algorithm 1 with the Kubernetes Horizontal Pod Autoscaler (HPA) . Instead of relying
+
+Fig. 4: Inference latency comparison between the microservice and monolithic service architecture as the number of replica N m,i increases when the arrival rate λ =4 is given. Overall, the microservice architecture shows the superior latency.
+
+<!-- image -->
+
+Fig. 5: Real-time latency prediction uses the arrival rate λ to meet the target latency τ . If latency exceeds τ , the system increases replicas N m,i . This prediction also enables proactive offloading based on λ and N m,i .
+
+<!-- image -->
+
+on generic resource indicators such as CPU %, the LA-IMR controller exports a desired\_replicas custom metric for every Deployment ⟨ m,i ⟩ :
+
+<!-- formula-not-decoded -->
+
+where N m,i ( t ) is the replica count computed in line 15 of Algorithm 1.
+
+The metric is scraped by Prometheus and surfaced to the HPA through the k8s-prometheus-adapter . The HPA's reconciliation loop then executes, every 5 s:
+
+- i) Read the custom metric and compare it with the current Pod count.
+2. ii) Scale out (or in) by the exact difference, bounded by the per-Deployment cap N max m,i and cluster quotas.
+3. iii) Respect graceful-termination : drained Pods are held until in-flight requests finish, preventing mid-request losses.
+
+Because the scaling trigger is the predicted latency budget ( τ m = xL infer m ) rather than lagging utilisation, extra replicas are spun up before queueing delay violates the SLO and are shed once utilisation drops below ρ low . In practice this removes the 60-120 s reaction lag typical of threshold-based autoscalers, keeps the p 99 latency inside the xL infer m envelope, and avoids chronic over-provisioning.
+
+## V. PERFORMANCE ANALYSIS
+
+## A. Experiment Environment
+
+- 1) Hardware Specifications : We utilize the CloudGripper testbed-a scalable, open-source, rack-mounted cloud robotics platform optimized for large-scale manipulation tasks. Each cell features a low-cost, 5-DOF Cartesian robot with a rotatable parallel-jaw gripper, controlled via a Raspberry Pi 4B (Quad-core Cortex-A72, 1.8GHz) and a Teensy 4.1 for realtime actuation. Dual RGB cameras (top and bottom views) capture multi-angle data at up to 30 FPS. As shown in Fig. 6, each robot operates in a standardized, enclosed cell (274 mm × 356 mm × 400 mm) with dedicated lighting, ensuring uniform and parallelized data collection. Five of them are connected to our SLO-Aware interference router to get services by sending an image taken by its camera and receiving the coordinates of the object.
+
+(a) Cube manipulation.
+
+<!-- image -->
+
+(b) Strip manipulation.
+
+<!-- image -->
+
+Fig. 6: CloudGripper work cells performing object manipulation with dual-camera views and consistent cell configurations.
+
+- 2) Cloud/edge Computing Continuum : CloudGripper leverages a cloud-edge continuum to support scalable, distributed robotic control and experimentation. The edge infrastructure includes a 32-robot rack connected via 1 Gbit/s Ethernet to a 10 Gbit/s switch, forming an on-campus edge
+
+Algorithm 1: Event-driven LA-IMR with x -scaled latency SLO
+
+̸
+
+```
+Input: incoming request r for service instance ( m,i ) at time t now 1 Function SLIDINGRATE ( m, t now ) : 2 while Q m = ∅ and t now -Q m . front () > 1 do 3 Q m . pop front () ; // discard arrivals > 1 s old 4 end 5 Q m . push back ( t now ) ; 6 return λ m ←| Q m | [req / s] ; Parameters: x > 1 (latency multiplier), EWMA weight α , utilization floor ρ low , per-instance replica cap N max m,i 7 λ m ← SLIDINGRATE ( m, t now ) ; 8 τ m ← xL infer m ; // Per-model SLO 9 ̂ g inst m,i ← g m,i ( λ m ) ; 10 if ̂ g inst m,i > τ m then // protect this single request 11 offload r to nearest fast/cloud tier; 12 return 13 end 14 read N m,i , ρ m,i from shared state; 15 λ accum m ← αλ accum m +(1 -α ) λ m ; 16 ̂ g m,i ← g m,i ( λ accum m ) ; 17 if ̂ g m,i > τ m then // predicted SLO breach 18 if N m,i < N max m,i then 19 scale out one replica on the current tier; 20 else 21 ϕ ← min ( 1 , ̂ g m,i -τ m ̂ g m,i ) ; 22 offload fraction ϕ upstream (balanced → low-latency tier); 23 end 24 end 25 else if ρ m,i < ρ low and N m,i > 1 then 26 scale in one replica to save cost; 27 end 28 route request r to the chosen local replica;
+```
+
+cluster. Each robot is operated through a REST API on a Raspberry Pi 4B, enabling low-latency control and dualcamera streaming at 30 FPS. The edge cluster comprises 32 Raspberry Pis (32x4 cores) running on Kubernetes with Prometheus-based monitoring, achieving an average container startup time of 1.8 seconds on ARM64.
+
+A remote cloud cluster, hosted by Ericsson, supplements this with 19 dedicated CPU cores and a 36 ms network delay over a 10 Gbit/s link.
+
+This setup enables dynamic offloading between edge and cloud, optimizing for latency, resource constraints, and performance. Benchmarks highlight the impact of deployment location on responsiveness, underscoring the need for adaptive orchestration in real-time robotics.
+
+- 3) Predictive-Metric Horizontal Pod Autoscaling (PM-HPA) : We introduce Predictive-Metric Horizontal Pod Autoscaling (PM-HPA), a proactive and latencyaware enhancement to Kubernetes' standard HPA. Rather than relying solely on traditional resource metrics, each microservice computes and exports a single custom metric, desired replicas, based on an internal closed-form queuing model that translates real-time request rates into the optimal number of replicas to mitigate the 99th percentile (P99). Latency measurements are collected via Prometheus, and the computed replica count is exposed to the native HPA, enabling it to scale pods responsively without altering the Kubernetes control plane. PM-HPA responds to traffic surges in milliseconds and maintains graceful shutdowns during scale-in. This results in improved tail-latency performance while maintaining full compatibility with both standard and managed Kubernetes environments.
+- 4) Experimental Setup and Test Scenario : LA-IMR runs on a Kubernetes edge cluster hosting a YOLOv5m object-detection microservice. A single CPU replica averages L infer m ≈ 0 . 8 s; the robot → router → edge → robot round-trip contributes another ≈ 1 s. Hence the latency SLO is set to
+
+<!-- formula-not-decoded -->
+
+with a safety margin x = 2 . 25 to absorb transient network and queueing delays.
+
+Unless stated otherwise, all experiments use the following calibrated parameters:
+
+- EWMA smoothing weight: α = 0 . 8
+- Cost-latency trade-off in Eq. (23): β = 2 . 5
+- Utilisation-latency exponent: γ = 0 . 90
+
+To evaluate latency robustness, we steadily increase the arrival rate λ -equivalently, the number of robots issuing requests-while recording the P95 and P99 response time. Whenever the predicted latency for a replica pool exceeds the SLO, LA-IMR automatically scales the pool horizontally by incrementing the replica count N m,i in accordance with Algorithm 1. This closed-loop reaction keeps the system below the instability boundary and maintains tail-latency within the configured envelope.
+
+## B. Latency Evaluation under Workload Fluctuations
+
+Fig. 7 illustrates a comparison between LA-IMR and a conventional latency-focused autoscaling strategy as the incoming request rate λ varies from 1 to 6 requests per second. When the system operates under light load conditions ( λ ≤ 3 ), both mechanisms maintain the service-level objective (SLO), exhibiting comparable median response times. However, as the demand rises, the traditional baseline shows noticeable latency variability. Specifically, at λ = 6 , the 99th percentile latency (P99) reaches 6.8 seconds, whereas LA-IMR constrains P99 to no more than 5.4 seconds. This improvement is primarily attributed to its anticipatory scaling of replicas and targeted offloading strategies. As a result, LA-IMR achieves significantly more consistent tail latency while maintaining similar average performance levels.
+
+<!-- image -->
+
+- (a) Average, P95, and P99 latencies of the proposed LA-IMR approach.
+- (b) The latencies of the baseline method using Prometheus-measured latency.
+
+<!-- image -->
+
+Fig. 7: Latency comparison of LA-IMR and the baseline latency-based method across varying arrival rates λ ∈ { 1 , 2 , 3 , 4 , 5 , 6 } . LA-IMR significantly reduces tail latencies, particularly the P99 latency, indicating better performance under high load.
+
+## C. Mitigation of Long-Tail Latency
+
+The Prometheus telemetry in Fig. 8 highlights LA-IMR's superior tail-latency control: its inter-quartile range is narrower, and extreme outliers are absent. Algorithm 1 predicts
+
+Fig. 8: Box-plots of P99 latencies (Prometheus measurements) for arrival rates λ = 1 -6 req / sec . LA-IMR shrinks the inter-quartile range by 27% and the maximum outlier by 41%.
+
+<!-- image -->
+
+queue build-ups from the closed-form model and either scales out or off-loads before long queues materialise, thereby suppressing otherwise destructive spikes.
+
+TABLE VI: P95 and P99 latencies (mean ± SD, sec) across arrival rates λ ; lower numbers are bold .
+
+|           | P95           | P95           | P99           | P99           |
+|-----------|---------------|---------------|---------------|---------------|
+| λ (req/s) | LA-IMR        | Baseline      | LA-IMR        | Baseline      |
+| 1         | 1.947 ± 0.003 | 1.950 ± 0.004 | 1.989 ± 0.001 | 2.012 ± 0.106 |
+| 2         | 2.287 ± 0.568 | 2.278 ± 0.288 | 2.858 ± 0.826 | 2.933 ± 0.598 |
+| 3         | 2.928 ± 0.494 | 3.107 ± 0.566 | 4.042 ± 0.856 | 4.201 ± 0.863 |
+| 4         | 3.692 ± 0.703 | 3.634 ± 0.575 | 4.167 ± 0.902 | 4.782 ± 0.526 |
+| 5         | 3.314 ± 0.471 | 3.963 ± 1.091 | 4.782 ± 0.639 | 5.632 ± 1.717 |
+| 6         | 4.051 ± 0.599 | 4.649 ± 1.125 | 5.435 ± 0.827 | 6.855 ± 2.208 |
+
+Table VI shows that LA-IMR consistently achieves lower or equal P95 latency compared to the baseline, with the largest reduction of 14% at λ = 5 req/s. For P99, the gains grow with load-from 1% at λ = 1 to 20.7% at λ = 6 -averaging around 9% overall. At peak load, LA-IMR also cuts the P99 standard deviation by over 60% (2.21 s → 0.83 s), greatly reducing outliers and improving SLO stability.
+
+## D. Discussion
+
+Experimental setup. LA-IMR was evaluated on a shared Kubernetes cluster whose pod start-up and tear-down times fluctuate with node availability, image caching, and network contention, introducing real-world noise that can mask fine-grained effects. For tractability we limited the study to two vision workloads-EfficientDet-Lite0 and YOLOv5m-and tuned the EWMA weight α , utilisation floor ρ low , and latency-budget multiplier x offline for their specific SLOs. Deployments with stricter SLOs or more volatile demand may therefore need adaptive self-tuning.
+
+Limitations and future work. Load bursts were emulated with a bounded-Pareto process, whereas real incidents (e.g., holiday shopping) often cause correlated spikes across services. We also left global off-loading and cross-cluster load balancing unoptimised from the cloud-provider's perspective-an open problem for future work.
+
+## VI. CONCLUSION
+
+We advance latency-sensitive edge-cloud inference by coupling a closed-form latency model-capturing processing, network, and queueing delays-with LA-IMR, a predictive, SLO-aware control layer that unites quality-stratified microservices, event-driven autoscaling, and selective offloading. Kubernetes experiments show LA-IMR trims P99 latency by up to 20.7% and cuts its variance by more than half compared with a reactive autoscaler, owing to prediction-guided offloading that deflects bursts before queues form and proactive replica provisioning that adds capacity before utilisation nears instability.
+
+We will extend LA-IMR by incorporating memory-intensive, variable-batch workloads to stress-test its latency model, replacing static control knobs with an online self-tuner that continuously maximises 'SLOs met per dollar,' and combining fast- and slow-window arrival-rate estimators to catch sudden spikes without destabilising steady traffic.
+
+## ACKNOWLEDGMENT
+
+## REFERENCES
+
+- [1] L. Suresh, M. Canini, S. Schmid, and A. Feldmann, 'C3: Cutting Tail Latency in Cloud Data Stores via Adaptive Replica Selection,' in 12th
+2. USENIX Symposium on Networked Systems Design and Implementation (NSDI) . USENIX, 2015, pp. 513-528.
+- [2] J. Dean and L. A. Barroso, 'The Tail at Scale,' Communications of the ACM , vol. 56, no. 2, pp. 74-80, 2013.
+- [3] R. S. Kannan, L. Subramanian, A. Raju, J. Ahn, J. Mars, and L. Tang, 'GrandSLAm: Guaranteeing SLAs for Jobs in Microservices Execution Frameworks,' in Proceedings of the Fourteenth EuroSys Conference 2019 . ACM, 2019, pp. 1-16.
+- [4] X. Wang, A. Khan, J. Wang, A. Gangopadhyay, C. E. Busart, and J. Freeman, 'An edge-cloud integrated framework for flexible and dynamic stream analytics,' Future Generation Computer Systems , vol. 135, pp. 158-171, 2022.
+- [5] A. Abouaomar, S. Cherkaoui, Z. Mlika, and A. Kobbane, 'Resource provisioning in edge computing for latency sensitive applications,' arXiv preprint arXiv:2201.11837 , 2022.
+- [6] T. Bai, C. Pan, Y. Deng, M. Elkashlan, A. Nallanathan, and L. Hanzo, 'Latency minimization for intelligent reflecting surface aided mobile edge computing,' arXiv preprint arXiv:1910.07990 , 2019.
+- [7] J. Zhang, X. Wang, P. Yuan, H. Dong, P. Zhang, and Z. Tari, 'Dependency-aware task offloading based on application hit ratio,' IEEE Transactions on Services Computing , vol. 17, no. 6, pp. 3373-3387, 2024.
+- [8] S. Sanfilippo, 'Redis: Remote Dictionary Server,' https://redis.io/, 2025, accessed: 2025-04-05.
+- [9] H. Zhang, Y. Yang, X. Huang, C. Fang, and P. Zhang, 'Ultra-low latency multi-task offloading in mobile edge computing,' IEEE Access , vol. 9, pp. 32 569-32 580, 2021.
+- [10] J. Liu and Q. Zhang, 'Offloading schemes in mobile edge computing for ultra-reliable low latency communications,' IEEE Access , vol. 6, pp. 12 825-12 837, 2018.
+- [11] Q. Liang, W. A. Hanafy, A. Ali-Eldin, and P. Shenoy, 'Model-driven cluster resource management for ai workloads in edge clouds,' ACM Transactions on Autonomous and Adaptive Systems , vol. 18, no. 1, pp. 1-26, 2023.
+- [12] K. Rao, G. Coviello, W.-P. Hsiung, and S. Chakradhar, 'ECO: EdgeCloud Optimization of 5G Applications,' in 2021 IEEE/ACM 21st International Symposium on Cluster, Cloud and Internet Computing (CCGrid) . IEEE, 2021, pp. 649-658.
+- [13] R.-H. Hwang, Y.-C. Lai, and Y.-D. Lin, 'Queue-length-based offloading for delay sensitive applications in federated cloud-edge-fog systems,' in IEEE Consumer Communications and Networking Conference (CCNC) . IEEE, 2021, pp. 1-6.
+- [14] J. Ahmad, M. S. Hossain, F. Al Awsaf, A. M. Islam, and S. M. Hasan, 'Partial offloading schemes for latency and computation sensitive tasks,' in 2022 IEEE Region 10 Symposium (TENSYMP) . IEEE, 2022, pp. 1-6.
+- [15] A. Gandhi, S. Koelbl, M. Harchol-Balter, and A. Wolman, 'Autoscaling for Handling Peak Loads in Cloud Applications,' IEEE Transactions on Services Computing , vol. 7, no. 4, pp. 707-719, 2014.
+- [16] L.-Y. Chen, S. Katsikas, and Q. Zhang, 'Deep Reinforcement Learning for Autoscaling Virtual Machines in Cloud Environments,' in Proceedings of the International Conference on Service-Oriented Computing (ICSOC) , 2020, pp. 105-122.
+- [17] A. Verma, L. Pedrosa, M. Korupolu, D. Oppenheimer, E. Tune, and J. Wilkes, 'Large-Scale Cluster Management at Google with Borg,' in Proceedings of the 10th European Conference on Computer Systems (EuroSys) , 2015, pp. 1-17.
+- [18] E. Caron, F. Desprez, and A. Muresan, 'Predictive Autoscaling for Cloud HPC: Combining Performance Models and Observations,' Future Generation Computer Systems , vol. 86, pp. 427-438, 2018.
+- [19] N. Sharma, R. Kaur, and I. Singh, 'Machine Learning-Driven Autoscaling of Microservices in Containerized Environments,' in Proceedings of the IEEE International Conference on Cloud Engineering (IC2E) , 2020, pp. 100-110.
+- [20] A. Ali, X. Chen, and G. De Luca, 'Adaptive Cloud Resource Scaling for Real-Time Data Streaming,' IEEE Transactions on Cloud Computing , vol. 9, no. 1, pp. 30-42, 2021.
+- [21] R. Kojima, Y. Sato, S. Kuroda, and T. Watanabe, 'AutoScale: Toward Automatic Resource Scaling in Microservices Using Machine Learning,' in Proceedings of the 22nd IEEE/ACM International Symposium on Cluster, Cloud and Grid Computing (CCGrid) , 2022, pp. 428-438.
+- [22] D. Lo, L. Eyraud-Dubois, C. Kozyrakis, and P. Ranganathan, 'Heracles: Improving resource efficiency at scale with flexible fine-grained resource control,' in Proceedings of the 42nd Annual International Symposium on Computer Architecture (ISCA) . IEEE, 2015, pp. 650-662.
+- [23] A. Dragojevi´ c, D. Narayanan, O. Hodson, and M. Castro, 'Farm: Fast remote memory,' in Proceedings of the 11th USENIX Conference on Networked Systems Design and Implementation (NSDI) . USENIX, 2014, pp. 401-414.
+- [24] B. Chandramouli, G. Graefe, and D. Zhukov, 'Faster: A concurrent key-value store with in-place updates,' in Proceedings of the 2018 International Conference on Management of Data (SIGMOD) . ACM, 2018, pp. 275-290.
+- [25] Y. Qin, L. Zhang, and M. Sanchez, 'An analysis of in-memory system performance for real-time analytics,' IEEE Transactions on Parallel and Distributed Systems , vol. 30, no. 8, pp. 1624-1637, 2019.
+- [26] Y. Kang, J. Hauswald, C. Gao, A. Rovinski, T. Mudge, J. Mars, and L. Tang, 'Neurosurgeon: Collaborative intelligence between the cloud and mobile edge,' in Proceedings of the 22nd International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS) . ACM, 2017, pp. 615-629.
+- [27] H. Jeong, S. Lee, and M. Yoo, 'Edgekv: An in-memory key-value store for dynamic offloading in edge environments,' in Proceedings of the IEEE International Conference on Edge Computing . IEEE, 2021, pp. 85-94.
+- [28] D. Li, W. Xue, and S. Wu, 'Adaptive in-memory offloading for real-time iot analytics,' Journal of Parallel and Distributed Computing , vol. 162, pp. 45-57, 2022.
+- [29] S. Ren, 'Faster r-cnn: Towards real-time object detection with region proposal networks,' arXiv preprint arXiv:1506.01497 , 2015.
+- [30] A. Farhadi and J. Redmon, 'Yolov3: An incremental improvement,' in Computer vision and pattern recognition , vol. 1804. Springer Berlin/Heidelberg, Germany, 2018, pp. 1-6.
+- [31] C. Szegedy, A. Toshev, and D. Erhan, 'Deep neural networks for object detection,' Advances in neural information processing systems , vol. 26, 2013.
+- [32] M. Everingham, L. Van Gool, C. K. Williams, J. Winn, and A. Zisserman, 'The pascal visual object classes (voc) challenge,' International journal of computer vision , vol. 88, pp. 303-338, 2010.
+- [33] J. Huang, V. Rathod, C. Sun, M. Zhu, A. Korattikara, A. Fathi, I. Fischer, Z. Wojna, Y. Song, S. Guadarrama et al. , 'Speed/accuracy trade-offs for modern convolutional object detectors,' in Proceedings of the IEEE conference on computer vision and pattern recognition , 2017, pp. 73107311.
+- [34] E. Li, L. Zeng, Z. Zhou, and X. Chen, 'Edge ai: On-demand accelerating deep neural network inference via edge computing,' IEEE Transactions on Wireless Communications , vol. 19, no. 1, pp. 447-457, 2019.
+- [35] S. e. a. Wang, 'A survey on mobile edge networks: Convergence of computing, caching and communications,' IEEE Access , vol. 9, pp. 67 502-67 528, 2021.
+- [36] V. Nigade, P. Bauszat, H. Bal, and L. Wang, 'Jellyfish: Timely inference serving for dynamic edge networks,' in 2022 IEEE Real-Time Systems Symposium (RTSS) , 2022, pp. 277-290.
+- [37] N. P. Jouppi, C. Young, N. Patil, D. Patterson, and et al., 'In-datacenter performance analysis of a tensor processing unit,' SIGARCH Comput. Archit. News , vol. 45, no. 2, p. 1-12, Jun. 2017. [Online]. Available: https://doi.org/10.1145/3140659.3080246
+- [38] K.-S. Oh and K. Jung, 'Gpu implementation of neural networks,' Pattern Recognition , vol. 37, no. 6, pp. 1311-1314, 2004. [Online]. Available: https://www.sciencedirect.com/science/article/pii/S0031320304000524
+- [39] L. Kleinrock, Theory, Volume 1, Queueing Systems . USA: WileyInterscience, 1975.
+- [40] G. Jocher et al. , 'ultralytics/yolov5: YOLOv5 by Ultralytics,' 2020. [Online]. Available: https://github.com/ultralytics/yolov5
+- [41] M. Tan, R. Pang, and Q. V. Le, 'Efficientdet: Scalable and efficient object detection,' in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2020, pp. 10 781-10 790. [Online]. Available: https://arxiv.org/abs/1911.09070

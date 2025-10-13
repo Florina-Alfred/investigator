@@ -1,0 +1,194 @@
+## Cloud-based Digital Twin for Cognitive Robotics
+
+1 st Arthur Nied´ zwiecki University of Bremen
+
+Institute for Artificial Intelligence
+
+Bremen, Germany 0009-0009-8894-3241
+
+4 th Michaela K¨ umpel
+
+Institute for Artificial Intelligence University of Bremen
+
+Bremen, Germany 0000-0002-0408-3953
+
+2 nd Sascha Jongebloed
+
+Institute for Artificial Intelligence University of Bremen
+
+Bremen, Germany
+
+0009-0006-3964-9597
+
+5 th J¨ orn Syrbe
+
+Institute for Artificial Intelligence University of Bremen
+
+Bremen, Germany
+
+0009-0001-2308-9517
+
+Abstract -The paper presents a novel cloud-based digital twin learning platform for teaching and training concepts of cognitive robotics. Instead of forcing interested learners or students to install a new operating system and bulky, fragile software onto their personal laptops just to solve tutorials or coding assignments of a single lecture on robotics, it would be beneficial to avoid technical setups and directly dive into the content of cognitive robotics. To achieve this, the authors utilize containerization technologies and Kubernetes to deploy and operate containerized applications, including robotics simulation environments and software collections based on the Robot operating System (ROS). The web-based Integrated Development Environment JupyterLab is integrated with RvizWeb and XPRA to provide real-time visualization of sensor data and robot behavior in a user-friendly environment for interacting with robotics software. The paper also discusses the application of the platform in teaching Knowledge Representation, Reasoning, Acquisition and Retrieval, and Task-Executives. The authors conclude that the proposed platform is a valuable tool for education and research in cognitive robotics, and that it has the potential to democratize access to these fields. The platform has already been successfully employed in various academic courses, demonstrating its effectiveness in fostering knowledge and skill development.
+
+Index Terms -Digital Twins, Remote Laboratories, Cognitive Robotics, Open Educational Resources
+
+## I. INTRODUCTION
+
+The cognitive robotics research field incorporates engineering, computer science, and psychology research to make a real robot move as intended. Interpreting sensor data and actuating the motors in the intended way to successfully perform tasks in the real world is a complex problem that needs to be divided into multiple modules, for example, perception, motion planning, reasoning over knowledge, navigation systems, trajectory calculation, and task execution. There are expert researchers
+
+This research was partially funded by the German Research Foundation DFG, as part of Collaborative Research Center (Sonderforschungsbereich) 1320 Project-ID 329551904 'EASE - Everyday Activity Science and Engineering', University of Bremen ( http://www.ease-crc.org/ ). The research reported in this paper has been also partially supported by the German Federal Ministry of Education and Research; Project-ID 16DHBKI047 'IntEL4CoRo', University of Bremen.
+
+3 rd Yanxiang Zhan
+
+Institute for Artificial Intelligence University of Bremen
+
+Bremen, Germany
+
+0009-0007-3509-2661
+
+6 th Michael Beetz
+
+Institute for Artificial Intelligence University of Bremen
+
+Bremen, Germany
+
+0000-0002-7888-7444
+
+Fig. 1. Assignment on Pick&amp;Place robots on the left, physics simulation on the right, showing the robots believed world state.
+
+<!-- image -->
+
+in all of these modules, and each researcher, depending on the field, has a different perspective on how to implement an intelligent robot. But to enable a cognitive holistic intelligent robot it is necessary to integrate all these fields.
+
+The complexity of such systems means that they are often difficult to penetrate and can only be operated by experts at great expense. The consequence of this is that there are only a few experts for cognitive robots, usually specialized only in certain hardware, simply because the often expensive hard- and software are not available to everyone. It is easy to imagine that as diverse the researchers and research fields are, teaching and training cognitive robotics is as complex as the diversity of the field and, therefore, includes various frameworks.
+
+We believe, to increase the number of people and collaboration in the field of cognitive robotics, such frameworks need to be made more accessible to research, industry and education. This includes lowering the inhibition threshold by raising less hardware and software requirements as well as providing intuitive tutorials that can be used by everybody.
+
+We propose to use a digital twin learning platform to teach &amp; train concepts of cognitive robotic frameworks. A digital twin , 'the digital equivalent to a physical product' [1]
+
+provides a digital equivalent of a real laboratory, including a robot and its programmable frameworks. If such digital twin learning platforms are made available through a cloud, the requirements on hardware and software can be reduced tremendously, thus solving the aforementioned problems. A digital twin also allows for a visualization of the environments and robots. Such visualizations are essential on a robotics learning platform, as it provides immediate visual feedback and an intuitive and interactive way for learners to understand complex robotic behavior and environmental interaction.
+
+This article introduces a digital twin laboratory framework that can be accessed by researchers and students through the web service JupyterHub [2], a framework combining documentation and executable code for learning programming skills. Through this programming interface, the learners interact with leading-edge research software, pre-installed alongside the Robot Operating System [3] (ROS). Through RVizWeb the programmer is able to visualize sensor data like camera images and laser scans in real-time. Jupyter, ROS, AI-applications, and RViz are wrapped in a Docker container, while Kubernetes [4] orchestrates these containers like classroom sessions for multiple students.
+
+In section II we describe and discuss similiar frameworks to ours. The relevant terms and concepts are outlined in section III, while section IV is dedicated to presenting our developed architecture. Section V focuses on validating our contributions by applying the developed platform in educational contexts and discussing the results. The paper concludes in section VI.
+
+## II. RELATED WORK
+
+In the field of education and research, the utilization of platforms to increase the accessibility of robotics in teaching and training garnered considerable attention. One example for this are remote and virtual laboratory platforms.
+
+Remote laboratory platforms like REAL [5], SyRoTek [6] and 'Robot Programming Network' [7] enable users to teleoperate robots either through specialized software or via web interfaces, facilitating a hands-on learning experience from a distance. Platforms like OpenUAV [8] or RobUALab [9] also offer a virtual laboratory with the capability to run simulations, either locally on the user's machine or remotely on a server. While this conventional teleoperation offers several advantages, our work focuses on simulations on the cloud, which reduces the limitations imposed by physical hardware availability and maintenance to enhance accessibility and scalability. Furthermore our platform integrates widely recognized physics simulations, such as PyBullet, ensuring a robust and realistic simulation environment.
+
+Similar to our framework, the system developed by Avila et. al. also relies on ROS as its core robotics framework and is designed for instruction in AI software for robots [10]. Concurrently, Zhang et. al. have introduced an online platform that facilitates learning by allowing the execution of code through IPython kernels [11], an interactive Python interpreter. This platform, although restricted to Python's visualization capabilities, demonstrates a platform similar to ours in educational settings. Lumpp et al. present a methodology for programming robotic tasks using Docker and Kubernetes, focusing on containerization and orchestration in ROS-based applications [12]. They successfully demonstrate the approach with a case study involving a Robotnik RB-Kairos robot in an industrial setting.
+
+The idea of using Digital Twins is well-established in the industry. For example, Intrinsics Flowstate [13] is using Digital Twins to develop concepts of industrial robots on a web-based construction platform with a graphical programming interface.
+
+Among existing platforms utilizing a digital-twin-like photo-realistic simulation, 'The Construct' [14] stands out as the most similar to the in this article proposed framework, offering a cloud-based learning environment complete with visualization tools and simulation. However, contrary to 'The Construct', our platform is built on open-source software, providing unrestricted and free access to our educational &amp; training resources. This openness is a fundamental aspect of our approach aimed at democratizing learning in robotics. Furthermore, our approach exceeds the basics of ROS to teach holistic, cognition-enabled autonomous systems.
+
+## III. BACKGROUND
+
+The following chapter describes the terms and concepts used to explain the proposed architecture.
+
+a) Semantic Digital Twin: In this study, we explore the application of semantic Digital Twins (semDTs), which are semantically enhanced virtual models of real environments and their associated entities [15], such as laboratories or production settings that can autonomously be created by robots as described in [16]. Digital twins have garnered significant interest in the research community. Our focus is on leveraging these virtual representations, particularly of robotic laboratories, including the objects and robots within, for educational purposes, like the pick &amp; place lesson in figure 1. Such a setup democratizes access to advanced robotics education, making it more inclusive and far-reaching.
+
+b) Cognitive Robotics: Concepts of cognitive robots are best described by Sandini, Vernon and Sciutti in [18]:
+
+'The word cognition derives from the Latin verb cognoscere, a composition of con (meaning related to) and gnoscere (to know). Cognitive robotics, then, is the branch of robotics where knowledge plays a central role in supporting action selection, execution, and understanding. [...]'
+
+The complexity of decision-making invites a broad field of research, from computer science over (electrical) engineering to psychology and philosophy.
+
+c) Varying Environments and Robot Platforms: Robots and their environments are versatile. Since a mobile robot can be applied in different environments, the digital twin must be flexible too. A robot focused on Human-Robot-Interaction (HRI) may be better suited for an everyday environment than a search-and-rescue robot. Dynamically exchanging the robot and its environment allows the researcher to tailor their experiments to their needs.
+
+Fig. 2. The cloud service framework built on BinderHub [17] initiates a new docker container for each connecting student. The Figure 3 showcasing the robot software framework within the container.
+
+<!-- image -->
+
+d) Cloud-Based: Cloud-based services leverage remote computing resources and storage, offering significant reproducibility, flexibility, and scalability for education and research. The rapid development of AI technologies like machine learning, which require substantial computational resources, has given rise to open-source cloud service solutions in recent years. These state-of-the-art solutions are well-suited for building cloud-based robot simulation services that equally require heavy computational power. Educators, students, and researchers can rapidly build and test various robot algorithms and control methods without the need to establish and maintain complex simulation environments locally. In this study, we focus on offering a Platform-as-a-Service (PaaS) [19] that allows educators and researchers to publish various Softwareas-a-Service (SaaS), such as tutorials, coding assignments for courses, and robotics competition arenas.
+
+## IV. PROPOSED ARCHITECTURE
+
+The following chapter explains the components of the cloudbased digital twin architecture.
+
+a) Containerized Application: Containerized applications use containerization technologies to package the application software along with necessary runtime libraries and configuration files into one executable process. The presented approach uses Docker [20]. This speeds up the deployment of software services across different computing environments without concerning the underlying hardware and operating systems. Each container is an isolated Linux environment, ensuring that each application functions without being affected by others, and behaves consistently.
+
+Many open-source robot research software, such as ROS and Gazebo, are developed based on Linux systems, leading to the widespread of containerization solutions in the field of
+
+Fig. 3. To control a real-world robot, ROS gives commands to it. ROS is running in the Docker and is loaded with AI Applications, e.g. the Cognitive Robot Abstract Machine (CRAM). The Digital Twin Simulation, a 3D game engine, is visualized in Jupyter via RVizWeb and/or a lightweight display for visual applications. Jupyter Notebooks run code to control the AI Applications, while a Terminal allows for direct access to the ROS processes.
+
+<!-- image -->
+
+robotics research. Figure 3 depicts a containerized application we constructed for robotics learning. It contains Robot Operating System (ROS) [3], our research software, an web Integrated Development Environment (JupyterLab [21]) and several visualization tools (RvizWeb, XPRA desktop). With this containerized application, students can launch a full-stack learning environment on their personal PC quickly and control robots within the Local-Area-Network through the web-based interface.
+
+b) Into the Cloud: The pre-built containerized application is ready to run locally as well as to deploy on the cloud server. Our chosen cloud architecture is from the opensource project BinderHub, an open source web service that lets users create sharable, interactive, reproducible environments in the cloud [17]. The underlying container orchestration system is Kubernetes, the de facto standard for deploying and operating containerized applications. Therefore, this setup can runs on major cloud platforms and self-hosted Linux servers. Additionally, it provides way to adjust computational resources without disrupting running services by adding or removing machines from the cluster.
+
+BinderHub is a platform designed for open-source workflows. To create a robotics containerized application, users only need to add an environment configuration file, usually a 'Dockerfile,' to their publicly available git repository. BinderHub builds a docker image accordingly and returns a URL of the application. This is equivalent to deploying a Softwareas-a-Service (SaaS). Moreover, whenever there are updates in the code repository, BinderHub automatically rebuilds the application. Users can also build applications for different git branches or specific commits, thereby releasing different versions. With returned URL, anyone can use the published containerized application in a web browser. Each click on the URL creates a separate docker container for the current user.
+
+Figure 3 illustrates the usecase of creating a virtual class-
+
+Fig. 4. ROSBoard [22] widget in Jupyter to visualize laser scan (top left), the front camera feed (top mid) and the recorded map (top right). Gazebo Physics Simulator (bottom left) and RViz visualization of the environment map (bottom right) on the XPRA VNC virtual desktop, navigating the Tortugabot through the digital twin on the green path.
+
+<!-- image -->
+
+room using this cloud platform. The lecturer initially creates a GitHub repository to store learning materials and a Dockerfile of the runtime environment. Submitting the repository address to BinderHub's home page generates a URL for the virtual classroom. Simultaneously, the cloud server builds a docker image in the background. Once the building is complete, the lecturer distrubute the URL to the student. Hence learners can start the course immediately without installing any special software.
+
+- c) Visualization: Visualization is imperative when teaching robotics to enable learners' volition through visual feedback. Live visualization of robot simulation in the web browser is not trivial. To visualize a digital twin , a PC shows a 3D simulation on the display. A website can not simply visualize these programs, but there are ways to make it happen.
+
+The most popular visualization software in ROS is Rviz, it shows camera images, depth clouds, lasers, and most importantly, the current configuration of the robot. Jupyter is extended with RvizWeb, a plugin that reimplements Rviz for Jupyter and integrates into the web environment. ROSBoard is another plugin to Jupyter that provides visualization for specific ROS datastructures, like real-time laser scans, camera feeds and ground maps, as depicted in figure 4 in the top.
+
+A later addition to the Jupyter platform is a virtual display, such that programs with a graphical user interface can be shown in the browser. For physics simulation ROS offers Gazebo. In figure 4 both Gazebo and Rviz are running in the online Docker container, visualized to the XPRA display via x-forwarding.
+
+## V. APPLICATION
+
+With the opportunity to dive directly into a complicated architecture, it is possible to teach how to control robots, visualize sensor data and learn about general AI techniques in robotics. As the foundational platform we have used this technology to teach robotics at the Fall School [23] since 2021, at IROS 2023 [24] and in academic courses.
+
+- a) Knowledge Representation and Reasoning: In our research, we have evaluated the usage of our system in teaching Knowledge Representation and Reasoning (KRR) for cognitive robots. This evaluation was conducted through its implementation in various university courses and Fall Schools. Our platform allows users to interact directly with the system using a knowledge representation querying language. One example of a KRR software we were teaching is KnowRob [25]. KnowRob is a knowledge processing software for cognitive robots, which utilizes a Prolog-like language for queries. To effectively teach this querying language, we integrated our notebooks into courses such as 'KI basierte Robotersteuerung' ('Ai-based robotic control') in 2022 and 2023.
+- b) Knowledge Acquisition and Retrieval: In addition to a basic KRR course to teach how knowledge can be represented for the use in cognitive robots, we have also created a course on Web Knowledge Acquisition and its Retrieval by robotic agents that has been implemented in Fall Schools and will be extended and implemented in Workshop Tutorials. The semDT platform allows users to directly access Web content and use it to extend the robot knowledge base. The course also shows how robotic agents can access the knowledge base and reason about the contained knowledge. The notebooks will be integrated into courses in a new AI masters program.
+- c) Task-Executives: Separate ROS applications can implement the functionality for navigation, image processing, knowledge representation and motion planning. The Cognitive Robot Abstract Machine (CRAM) [26] is given a goal, like preparing a breakfast table and cleaning it up afterwards [27]. From this rather general description of a goal, the task executive gathers information about the environment, uses image processing to identify objects and queries the knowledge base for how to pick up the desired object, and navigating to the breakfast table, to finally acquire how and where to place it down without hitting any other items on the table. Recurring lectures on Task Executives are found at the Fall School [23] and the graduate course 'Robot Programming with ROS' [28].
+- d) Discussion: Prior to the cloud-based technology we offered VirtualBox [29] virtual machines (VM) with a full desktop environment, ROS and AI applications already installed. They were too large to download quickly, but served the broadest toolset for the individual student. Since we use RvizWeb, XPRA and ROSBoard we have visualization of the Docker image, so it can run in the web. Kubernetes was introduced to manage multiple clients. Running simulations requires a lot of computation time: we guarantee 8 GB of RAM per client session, more is needed for heavier digital twins, e.g. an Unreal Engine.
+
+While hands-on tutorials with VirtualBox were unfeasible due to the VM size, offering the web platform, our proposed architecture, kept most attendees participating. At the Fall School 2023 we recorded the highest ratio in participation to attendance over the past years, thanks to the ease of access.
+
+e) Future Work: To enable interested learners to get into the field of cognitive robotics we are creating courses and tutorials. While our focus is currently on higher education and in-service training, secondary education is planned.
+
+While our server runs Kubernetes to orchestrate new students launching the digital-twin environment, we were looking into two other platforms that provide computational resources for open-source software. Github Codespaces [30] fully supports running our robot application, but the cloud computing resources are strictly limited. Google Colab [31] provides robust computational resources, including GPUs, yet imposes restrictions on the WebSocket protocol, which renders our visualization tool dysfunctional.
+
+## VI. CONCLUSION
+
+Building containerized applications is critical for cloudbased robot systems and is a fundamental task of cloud solutions in many other research domains. Within this setup, a significant challenge is the real-time rendering of 3D robot digital twin environments and displaying them on a web-based client to achieve platform independent accessibility.
+
+Such a cloud-based and independent digital twin learning &amp; training platforms solves the aforementioned setup and hardware problems.
+
+Tech giants like Amazon and NVIDIA have launched their robot simulation cloud services, providing much more computational resources and cutting-edge technologies. However, our focus remains on free and open-source solutions tailored for the education and research domains, and to encourage more researchers, developers, and educators to engage in robotics.
+
+## REFERENCES
+
+- [1] M. Grieves, Virtually perfect: Driving innovative and lean products through product lifecycle management . Space Coast Press Cocoa Beach, 2011, vol. 11.
+- [2] The Jupyter Trademark. Project Jupyter. Accessed 2024-03-13. [Online]. Available: https://jupyter.org
+- [3] M. Quigley, K. Conley, B. Gerkey, J. Faust, T. Foote, J. Leibs, R. Wheeler, A. Y. Ng, et al. , 'Ros: an open-source robot operating system,' in ICRA workshop on open source software , vol. 3, no. 3.2. Kobe, Japan, 2009, p. 5.
+- [4] The Kubernetes Authors. Kubernetes. Accessed 2024-03-13. [Online]. Available: https://kubernetes.io/
+- [5] E. G. Guimar˜ aes, E. G. Guimar˜ aes, A. Maffeis, J. A. L. Pereira, J. Pereira, B. Russo, E. N. Cardozo, E. Cardozo, M. Bergerman, M. F. Magalh˜ aes, and M. F. Magalh˜ aes, 'Real: a virtual laboratory for mobile robot experiments,' IEEE Transactions on Education , 2003.
+- [6] M. Kulich, M. Kulich, J. Chudoba, J. Chudoba, K. Koˇ snar, T. Krajnik, J. Faigl, and L. Preucil, 'Syrotek-distance teaching of mobile robotics,' IEEE Transactions on Education , 2013.
+- [7] G. Casa˜ n, E. Cervera, A. Abou Moughlbay, J. Alemany, and P. Martinet, 'Ros-based online robot programming for remote education and training,' Proceedings - IEEE International Conference on Robotics and Automation , vol. 2015, pp. 6101-6106, 06 2015.
+- [8] M. Schmittle, M. Schmittle, M. Schmittle, A. Lukina, A. Lukina, L. Vacek, L. Vacek, J. Das, C. P. Buskirk, S. Rees, J. Sztipanovits, R. Grosu, V. Kumar, and V. Kumar, 'Openuav: a uav testbed for the cps and robotics community,' 2018.
+- [9] C. A. Jara, F. A. Candelas, F. A. Candelas, S. T. Puente, and F. Torres, 'Hands-on experiences of undergraduate students in automatics and robotics using a virtual and remote laboratory,' 2011.
+- [10] E. A. Avila, D. P. Chapa, I. D. Arenas, and C. V. Hurtado, 'A digital twin implementation for mobile and collaborative robot scenarios for teaching robotics based on robot operating system,' in 2022 IEEE Global Engineering Education Conference (EDUCON) , 2022, pp. 559-564.
+- [11] A. Zhang, Z. C. Lipton, M. Li, and A. J. Smola, 'Dive into deep learning,' 2023.
+- [12] F. Lumpp, M. Panato, F. Fummi, and N. Bombieri, 'A container-based design methodology for robotic applications on kubernetes edge-cloud architectures,' 2021 Forum on specification &amp; Design Languages (FDL) , pp. 01-08, 2021.
+- [13] Intrinsic. Flowstate Intrinsic. Accessed 2024-03-13. [Online]. Available: https://intrinsic.ai/flowstate/
+- [14] R. A. T´ ellez, 'A thousand robots for each student: Using cloud robot simulations to teach robotics,' in Robotics in Education , 2016. [Online]. Available: https://api.semanticscholar.org/CorpusID:19140247
+- [15] M. K¨ umpel, C. A. Mueller, and M. Beetz, Semantic Digital Twins for Retail Logistics . Springer International Publishing, 2021, pp. 129-153. [Online]. Available: https://doi.org/10.1007/978-3-030-88662-2 7
+- [16] M. Beetz, S. Stelter, D. Beßler, K. Dhanabalachandran, M. Neumann, P. Mania, and A. Haidu, Robots Collecting Data: Modelling Stores . Cham: Springer International Publishing, 2022, pp. 41-64. [Online]. Available: https://doi.org/10.1007/978-3-031-06078-6 2
+- [17] B. Ragan-Kelley, C. Willing, F. Akici, D. Lippa, D. Niederhut, and M. Pacer, 'Binder 2.0-reproducible, interactive, sharable environments for science at scale,' in Proceedings of the 17th python in science conference . F. Akici, D. Lippa, D. Niederhut, and M. Pacer, eds., 2018, pp. 113-120.
+- [18] G. Sandini, A. Sciutti, and D. Vernon, Cognitive Robotics . Berlin, Heidelberg: Springer Berlin Heidelberg, 2020, pp. 1-7. [Online]. Available: https://doi.org/10.1007/978-3-642-41610-1 198-1
+- [19] F. Doelitzscher, A. Sulistio, C. Reich, H. Kuijs, and D. Wolf, 'Private cloud for collaboration and e-learning services: from iaas to saas,' Computing , vol. 91, pp. 23-42, 2011.
+- [20] D. Merkel et al. , 'Docker: lightweight linux containers for consistent development and deployment,' Linux j , vol. 239, no. 2, p. 2, 2014.
+- [21] J. M. Perkel, 'Why jupyter is data scientists' computational notebook of choice,' Nature , vol. 563, no. 7732, pp. 145-147, 2018.
+- [22] W. Vollprecht. Jupyter-ROS. Accessed 2024-03-13. [Online]. Available: https://jupyter-ros.readthedocs.io
+- [23] EASE, University of Bremen. EASE Fall School 2023. Accessed 2024-03-13. [Online]. Available: https://ease-crc.org/fall-school-2023/
+- [24] --. Everyday Activity robot manipulation in an interactive learning environment. Accessed 2024-03-13. [Online]. Available: https://ease-crc.org/ teaching-cognition-enabled-cognitive-robotics-in-an-integrated-learning-environment
+- [25] M. Beetz, D. Beßler, A. Haidu, M. Pomarlan, A. K. Bozcuo˘ glu, and G. Bartels, 'Know rob 2.0 - a 2nd generation knowledge processing framework for cognition-enabled robotic agents,' in 2018 IEEE International Conference on Robotics and Automation (ICRA) , 2018, pp. 512519.
+- [26] M. Beetz, G. Kazhoyan, and D. Vernon, 'The cram cognitive architecture for robot manipulation in everyday activities,' 2023.
+- [27] G. Kazhoyan, S. Stelter, F. K. Kenfack, S. Koralewski, and M. Beetz, 'The robot household marathon experiment,' in IEEE International Conference on Robotics and Automation (ICRA) , 2021, accepted for publication. [Online]. Available: https://arxiv.org/abs/2011.09792
+- [28] A. Niedzwiecki. Course: Robot Programming with ROS. Accessed 2024-03-13. [Online]. Available: https://ai.uni-bremen.de/teaching/ cs-ros-ws23
+- [29] Oracle. Oracle VM VirtualBox. Accessed 2024-03-13. [Online]. Available: https://www.virtualbox.org/
+- [30] GitHub Inc. GitHub Codespaces. Accessed 2024-03-13. [Online]. Available: https://github.com/features/codespaces
+- [31] Google. Welcome to Colaboratory. Accessed 2024-03-13. [Online]. Available: https://colab.research.google.com/

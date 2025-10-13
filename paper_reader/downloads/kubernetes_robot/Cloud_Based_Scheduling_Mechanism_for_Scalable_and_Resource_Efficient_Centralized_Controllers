@@ -1,0 +1,226 @@
+## Cloud-Based Scheduling Mechanism for Scalable and Resource-Efficient Centralized Controllers
+
+Achilleas Santi Seisa ∗ , Sumeet Gajanan Satpute and George Nikolakopoulos
+
+Abstract -This paper proposes a novel approach to address the challenges of deploying complex robotic software in large-scale systems, i.e., Centralized Nonlinear Model Predictive Controllers (CNMPCs) for multi-agent systems. The proposed approach is based on a Kubernetes-based scheduling mechanism designed to monitor and optimize the operation of CNMPCs, while addressing the scalability limitation of centralized control schemes. By leveraging a cluster in a real-time cloud environment, the proposed mechanism effectively offloads the computational burden of CNMPCs. Through experiments, we have demonstrated the effectiveness and performance of our system, especially in scenarios where the number of robots is subject to change. Our work contributes to the advancement of cloud-based control strategies and lays the foundation for enhanced performance in cloud-controlled robotic systems.
+
+Index Terms -Robotics; Cloud Computing; Cloud Robotics; Kubernetes; CNMPC; Multi-agent Systems.
+
+## I. INTRODUCTION
+
+Cloud robotics has been a topic of discussion for several years [1], [2], but the widespread utilization of cloud computing in robotic systems has remained limited to specific applications, such as Computer Vision (CV) [3], [4], learning (machine learning, robot learning, etc.) [5]-[7], and Simultaneous Localization And Mapping (SLAM) [8]. However, the potential advantages of cloud computing extend even to more traditional robotics concepts that require significant computational resources . One such concept is the trajectory tracking control with embedded collision avoidance, such as Nonlinear Model Predictive Control (NMPC) [9], which can greatly benefit from leveraging cloud computing capabilities.
+
+In [10], a framework called KubeROS is introduced to tackle the challenges of deploying complex robotic software in largescale systems. Unlike KubeROS, our proposed system does not require robots to be part of the Kubernetes cluster. This provides the advantage of flexibility, allowing the number of robots to dynamically change. Additionally, our system introduces a fully dynamic and automated solution to overcome the scalability limitation of centralized control schemes, achieved through the implementation of a scheduling mechanism.
+
+The pursuit of efficient resource management in cloudcontrolled robotic systems presents unique challenges, particularly when employing computationally intensive control methods, such as NMPC. The complexity and computational
+
+This project has received funding from the European Union's Horizon 2020 research and innovation programme under the Marie Skłodowska-Curie grant agreement No 953454.
+
+The authors are with the Robotics and AI Group, Department of Computer, Electrical and Space Engineering, Lule˚ a University of Technology, Lule˚ a
+
+∗ Corresponding Author's email: achsei@ltu.se
+
+Fig. 1. High-level overview of the proposed framework in the real-time cloud with its core components.
+
+<!-- image -->
+
+demands of centralized scenarios, where a single controller governs the trajectories of multiple agents (Centralized NMPC i.e., CNMPC), further exacerbate these challenges. The performance of these controllers is influenced by various factors, including the number of agents, the parameters of the NMPC (e.g., prediction horizon, optimization solver iterations, etc.), and the constraints of the system [11].
+
+The debate between distributed and centralized control has been a topic of extensive research. Previous studies, such as [12] and [13], have analyzed centralized and distributed control schemes for swarms in detail. These works concluded that while centralized approaches clearly outperform distributed ones in terms of performance, the scalability limitations of centralized schemes render them unsuitable for large-scale multi-agent systems. In light of this challenge, the present article proposes a novel approach to overcome the scalability limitation of centralized control schemes. We introduce a scalable framework based on a scheduling mechanism that can generate multiple centralized control schemes, thus retaining the high-performance characteristic of centralized control while addressing scalability concerns.
+
+In this context, we present the development of a sophisticated scheduler operating at a frequency of 1Hz. Operating from a mission planning node, the scheduler meticulously monitors the number of agents and the CNMPC parameters. Any changes detected in these parameters trigger the deployment of a new CNMPC or the update of the existing one. Consequently, centralized controllers are efficiently allocated to worker nodes that can precisely fulfill the requested computational resources, promoting optimal performance and responsiveness, and communicating with the external world with a data transmission module. The realization of this framework is achieved with the development of these main modules in the real-time cloud, as depicted in Fig. 1.
+
+Fig. 2. Overview of the block diagram. Real-time cloud includes the mission planner, the scheduler, the controllers, and the proxy server (UDP tunnel). Robots include the multi-agent system and the agent end of the UPD tunnel.
+
+<!-- image -->
+
+The proposed scheduling mechanism overcomes the limitations of centralized control schemes by enabling the dynamic allocation of agents and CNMPC parameters for each CNMPC. This flexibility allows for the efficient control of varying numbers of agents, making it suitable for applications with changing agent counts in comparison to [14], where the number of agents has to be predefined. By leveraging the Kubernetes cluster, the proposed mechanism can handle a large number of agents. The system achieves this by deploying the corresponding centralized controllers and allocating them to worker nodes equipped with appropriate resources, ensuring efficient control over numerous agents, thus enabling the application of CNMPCs in complex and large-scale systems.
+
+In summary, the contributions of this work encompass the novel establishment of a cloud framework for multiagent closed-loop robotic applications with the ability to handle scalability and flexibility through dynamic allocation of computational resources. Compared to [15], which primarily focuses on dynamic resource allocation through decisions about execution location, our work maximizes the utilization of cloud resources by dynamically allocating and continuously monitoring application resources within the cloud infrastructure. Additionally, the proposed framework is capable of handling a large number of agents and sequentially providing optimized resource allocation.
+
+## II. SCHEDULING MECHANISM
+
+The scheduling mechanism serves as a fundamental component of this work as it not only monitors the available resources but also facilitates the deployment of CNMPCs.
+
+## A. Mission Planner
+
+To effectively coordinate the operations of the agents and determine the required parameters for the CNMPCs, a mission planner has been developed. The mission planner receives the desired number of cloud-controlled agents, denoted as agent d num , along with high-level commands including take-off and safety-land. Subsequently, the mission planner publishes this information to other relevant nodes, such as the scheduler, and the CNMPCs, aiming to form units composed of agents within the same CNMPC. Additionally, it provides the desired trajectories, represented by x ref i , for all the cloud-controlled agents involved in the mission, as depicted in the block diagram of Fig. 2.
+
+## B. Scheduler
+
+The scheduler is the most crucial part of the scheduling mechanism, serving as its core component. It receives the necessary information from the mission planner, including the number of agents and the CNMPC parameters ( CNMPC args ). Leveraging this information, the scheduler dynamically generates the necessary deployments required for the operation of the CNMPCs, considering as well the computational requirements. In addition to creating deployments, corresponding services are established that facilitate seamless message exchange between the cloud and the agents. The scheduler not only monitors the deployment of controllers and their resource utilization but also ensures continuous execution by creating replicas. This redundancy guarantees that cloud controllers remain operational, even in cases where pods running controllers face interruptions in their execution. To enhance the scheduler's effectiveness, insights are extracted from the Kubernetes environment. These logs provide essential feedback, allowing the scheduler to fine-tune its performance and optimize the allocation of computational resources. Overall, the scheduler harnessing Kubernetes capabilities to facilitate dynamic deployments, resource management, and robust communication between cloud controllers and agents.
+
+1) Monitoring the Deployment of CNMPCs: This task required a comprehensive understanding of both the mission planner and the intricacies associated with the function of CNMPCs. In particular, it was crucial to determine the maximum number of agents that can be effectively controlled by a single CNMPC, thereby facilitating the calculation of the required number of CNMPCs to govern all available agents. This calculation was performed empirically, and the corresponding agent max value was selected. Based on this knowledge, a dynamic deployment strategy for CNMPCs was devised, as illustrated in Algorithm 1. While [10] uses a load balancer to manage the number of Virtual Machines (VMs) required for motion planning, our approach takes a more dynamic and flexible approach by allowing the scheduler to generate and terminate deployments as needed based on various inputs such as the number of agents and mission planner objectives.
+
+Algorithm 1 Deployment of CNMPCs based on the desired number of agents ( agent d num )
+
+̸
+
+```
+1: if agent d num = agent old num then 2: CNMPC num = int ( agent d num -1 agent max +1) 3: if agent d num < agent old num then 4: for j = CNMPC num : CNMPC old num do 5: There are unnecessary deployments 6: Delete unnecessary deployments 7: end for 8: for j = 2 ∗ agent d num +1 : 2 ∗ agent old num +1 do 9: There are unnecessary services 10: Delete services 11: end for 12: end if 13: if agent d num = 0 then 14: agent CNMPC = int ( agent d num -1 CNMPC num ) 15: agent float CNMPC = agent d num -1 CNMPC num 16: counter = 0 17: for j = 0 : CNMPC num do 18: if agent CNMPC = agent float CNMPC then 19: agent CNMPC = int ( agent d num -1 CNMPC num ) 20: Create or update deployments 21: Create or update services 22: else 23: counter = counter +1 24: agent CNMPC = int ( agent d num -1 CNMPC num ) + 1 25: agent float CNMPC = agent d num -counter CNMPC num 26: Create or update deployments 27: Create or update services 28: agent CNMPC = agent CNMPC -1 29: end if 30: end for 31: end if 32: agent old num = agent num 33: CNMPC old num = CNMPC num 34: end if
+```
+
+̸
+
+The total number of CNMPCs to control all the agents is denoted as CNMPC num , while agent old num and CNMPC old num describe the number of agents and the number of CNMPCs in the previous iteration, respectively. The parameters agent CNMPC ∈ Z + and agent float CNMPC ∈ R + are describing the number of agents per CNMPC. Finally, counter is an auxiliary variable that is needed for the correct deployment of the controllers.
+
+2) Resource Allocation: In comparison to other cloud or edge architectures for robot control as in our previous work [16], the current work takes into account the computational requirements of the application to strategically deploy CNMPCs to worker nodes, equipped with the necessary resources. Opposed to [10], where the resources are managed at a high level based on the available hardware, we experimentally analyzed and estimated the computational effort exerted by the CNMPCs, considering factors, such as the number of agents and the CNMPC parameters. This analysis leads us to formulate Eq. (1), and (2):
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+The parameter x ∈ R describes the number of agents for each CNMPC ( agent CNMPC ), N ∈ R , where 0 ≤ N &lt; 1 , corresponds to the CNMPC prediction horizon and rate parameters ( CNMPC args ), while a, b ∈ Z + are known scalars. Utilizing the derived equation, we establish CPU and memory (M) allocations for each CNMPC within a specified minimum and maximum range [ CPU d min , CPU d max ] and [ M d min , M d max ] , respectively. In addition, the minimum and maximum CPU and memory requirements for CNMPC execution are defined as CPU n min , CPU n max , M n min , and M n max ∈ Z + , respectively, based on the minimum resource requirement and the maximum available resources without depleting them. This ensures that each CNMPC efficiently utilizes the appropriate number of CPU cores and memory, thereby optimizing overall efficiency, while avoiding unnecessary overhead.
+
+## C. Data Flow
+
+The data flow in our cloud-based control system facilitates seamless communication and coordination between the cloudcontrolled agents and the real-time cloud. It operates at two levels and leverages a proxy server with a User Datagram Protocol (UDP) tunnel for communication between agents and the cloud, and is illustrated within the yellow area in Fig. 2. Additionally, communication within the Kubernetes cluster relies on the Robotic Operating System (ROS) networking mechanism. In comparison to traditional distributed systems, where agents often require direct communication with one another, the proposed approach streamlines communication. All agents communicate exclusively with the cloud, eliminating the need for direct peer-to-peer interactions. The cloud provides all the necessary information for the agents to operate and interact with their environment. This streamlined communication paradigm enhances system efficiency and reduces the complexity of agent-to-agent communication.
+
+1) Data Transmission Through a Proxy Server: For the transmission of ROS messages between the agents and the real-time cloud, a proxy server is utilized with a UDP tunnel comprising client and server nodes. One end of the tunnel is running at each agent, while the other end is running at the proxy server. The agents send their positional information, including position, velocity, and orientation ( x i ( k ) = [ p i ( k ) , ˙ p i ( k ) , q i ( k )] T , where i = 1 , . . . , agent num ), to the cloud using the proxy server's Internet Protocol (IP) address. Before transmission, ROS messages are transformed into byte arrays to facilitate data transfer. The proxy server extracts this information from the byte arrays and forwards it to the ROS nodes running within the Kubernetes pods as ROS messages. This information arrives in the cloud with uplink delay denoted with d 1 , thus the positional information is described as x i ( k -d 1 ) . Similarly, control actions, such as roll, pitch, yaw, and thrust ( u i ( k -d 2 ) , where d 2 describes the downlink delays), are transformed into byte arrays and sent to the agents from the cloud through the proxy server. To ensure smooth and efficient transmission, sockets are dynamically generated, providing specified ports for each message's exchange. Given that CNMPCs are stateful applications, sharing information across all relevant nodes within the Kubernetes cluster is crucial. By employing a proxy server, which holds all necessary information and utilizes ROS for internal cluster communication, we effectively address communication challenges and facilitate seamless migration between CNMPC applications.
+
+2) Robotic Operating System: Within the Kubernetes cluster, all pods are part of the same network, enabling ROS nodes to communicate freely with each other using ROS subscribing and publishing mechanisms. To facilitate communication, all ROS nodes must register with the same ROS master, which runs independently in its own Kubernetes pod to prevent potential interference during execution.
+
+## D. Centralized Nonlinear Model Predictive Controllers
+
+1) Robot kinematic model: The utilization of MPC for trajectory control of Unmanned Aerial Vehicles (UAVs) has been studied extensively in previous works [9], [17], [18]. In this work, the CNMPC utilizes the UAV model described in [19], and is based on NMPCs that can compensate for latency as described in [20]. The UAVs are represented as fixed-body, six degrees-of-freedom robots, as in Eq. (3):
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+The parameters p i ≜ [ p x,i ( t ) p y,i ( t ) p z,i ( t ) ] T ∈ R 3 and q i ≜ [ q ϕ,i ( t ) , q θ,i ( t ) , q ψ,i ( t ) ] T ∈ R 3 describe the position and orientation of each UAV, where i = 1 , . . . , agent num , while m is the mass of the UAVs, R i ∈ R 3 × 3 is the Euler angle rotation matrices, and F i ( t -τ ) ≜ [ 0 0 F z,i ( t -τ ) ] T ∈ R 3
+
+is the total thrusts which are defined by the control inputs u i ( t -τ ) = R i ( q i ( t )) F i ( t -τ ) ∈ R 3 (roll, pitch, and the total thrust) for each UAV. G ≜ [ 0 0 -9 . 81 ] T and A ∈ R 3 × 3 represent the gravity, and the drag-coefficients. q d ϕ,i , q d θ,i are the desired input values with time constants α ϕ , α θ , and gains K ϕ , K θ , respectively. Finally, the time delays consisting of d 1 and d 2 are denoted with τ .
+
+2) State Estimator: As in [20], in order to compensate for the system's time delays, we leverage the estimated position and velocity of each UAV as presented in Eq. (4):
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+The above information is used to generate the future states of the UAVs for the control inputs, as described in Eq. (5):
+
+<!-- formula-not-decoded -->
+
+3) Centralized Controller: The objective of the controllers is to design a function so that the control inputs u i will generate collision-free trajectories to track the desired reference positions. The function considers both the time delays and the state of every agent of its centralized scheme, in order to generate the paths and to penalize deviation from the desired position. The controllers' complexity lies in the specific number of agents that they have to control, the prediction horizon N , and the sampling time, T , to optimize the control inputs. The reference states, x ref i are sampled through the prediction horizon for formulating the cost function, J n , where n = 1 , . . . , CN MP C num as described in Eq. (6):
+
+<!-- formula-not-decoded -->
+
+The cost matrices serve to minimize not only state errors ( Q x ) but also ensure the smoothness of the control signal by reducing differences between consecutive inputs ( Q δu ). Moreover, they help maintain control inputs at a proximity to hovering mode ( Q u ). Our method, while powerful, involves greater computational complexity compared to alternative approaches. This complexity arises from the necessity for a centralized scheme where all agents ( N a ) share their states. However, this increased computational load is effectively managed by the monitored cloud resources, which facilitate the execution of controllers and the attainment of optimal solutions.
+
+To enforce collision avoidance as a constraint over the cost function, we consider the estimated positions of the UA Vs over the prediction horizon. Hence, an agent-to-agent ( l, i ) collision avoidance constraint C l,i is presented in (7). The constraint becomes an equality when satisfied, enforcing a minimum separation of r safe between each agent.
+
+<!-- formula-not-decoded -->
+
+The CNMPC problems' are solved with the Proximal Averaged Newton-type method for Optimal Control (PANOC) [19] using the Eq. (8), while the stability analysis of [21] was used.
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+## III. EXPERIMENTAL SETUP WITH SIMULATED AGENTS
+
+To assess the effectiveness of our proposed approach, we established a test environment within the Ericsson Research real-time cloud infrastructure in Sweden [22], which is built upon OpenStack [23]. This test bed encompasses our Kubernetes cluster and the simulation environment. that is depicted in Fig. 3. For simulating UAVs, we used the simulation ROS package [24] for Gazebo, running on a dedicated Virtual Machine within the OpenStack. The primary objective of this research is to evaluate our scheduling mechanism's performance in terms of computational efficiency, communication delays, maintaining precise control with limited tracking error, and its scalability to accommodate a substantial number of agents.
+
+Fig. 3. System overview with the real-time cloud test bed operating the scheduling mechanism within a Kubernetes cluster.
+
+<!-- image -->
+
+The proposed Kubernetes cluster comprises one master node and three worker nodes. The mission planner, scheduler, and the UDP tunnel operate continuously on the worker nodes. In contrast, CNMPC pods are dynamically deployed as needed, with their deployment location determined based on resource requirements. The specifications of the Kubernetes cluster and the external machine hosting the simulated agents are presented in Table I, while a visual representation of the cluster is depicted in Fig. 4. We utilized Kubernetes version
+
+Fig. 4. The Kubernetes cluster experimental setup with a snapshot of the external VM that hosts the simulator. Three CNMPCs are contributed to two worker nodes, and control the trajectory of 21 UAVs.
+
+<!-- image -->
+
+v1.26.1 and Docker version v24.0.5 as the container runtime for this work, with all scheduling mechanism modules hosted within the cluster as Kubernetes pods. Worker node 3, having weaker specifications compared to nodes 1 and 2, hosts the mission planner, scheduler, UDP tunnel, and roscore. In contrast, worker nodes 1 and 2 are dedicated to the controllers. The Kubernetes orchestration seamlessly assigns CNMPCs to worker nodes, taking into account the cluster's availability and the specific resource requirements of each CNMPC, while extra worker nodes can be integrated into the cluster to help manage any overload.
+
+TABLE I KUBERNETES CLUSTER AND SIMULATOR VM SPECIFICATIONS
+
+|               | CPU     | Memory   | Environment        |
+|---------------|---------|----------|--------------------|
+| Master Node   | 3-core  | 2GB      | Ubuntu 20.04.6 LTS |
+| Worker Node 1 | 32-core | 460GB    | Ubuntu 20.04.6 LTS |
+| Worker Node 2 | 16-core | 32GB     | Ubuntu 20.04.6 LTS |
+| Worker Node 3 | 4-core  | 8GB      | Ubuntu 20.04.6 LTS |
+| Simulator     | 32-core | 480GB    | Ubuntu 20.04.6 LTS |
+
+In Fig. 5, we assess the scheduling mechanism and demonstrate resource utilization for a sample of 50 trials. The left figure illustrates resource utilization on a 16-core machine without scheduling, while the right figure shows resource utilization with our proposed mechanism. Without scheduling, resource utilization exponentially rises with an increasing number of agents. In contrast, our approach effectively monitors and maintains resource utilization within desired limits. This figure highlights our approach's capability to scale up the number of agents, overcoming limitations seen in traditional centralized approaches.
+
+In Fig. 6, we illustrate the tracking error of UA Vs as they transition between CNMPCs, and we highlight the scaling and migrating capability of our approach. Initially, the mission planner provides control for four UAVs through (CNMPC 1 ). At t = 65 seconds, three additional UAVs join the system, prompting the scheduler to create a new controller (CNMPC ′ 1 ) to manage all the robots. When the new CNMPC is deployed, all agents migrate to it. By t = 125 seconds, three more UAVs join. In response, the scheduler initiates the deployment of two controllers (CNMPC ′′ 1 and CNMPC 2 ) to facilitate trajectory control for all robots. UAV 6 and UAV 7 must adjust their positions, incurring a tracking error increase (their new set point is far from the current one), to join CNMPC 2 along
+
+Fig. 5. Comparison of resources utilization with (right figure) and without (left figure) scheduling mechanism. The number of agents exceeds 10 (5 on CNMPC 1 - Worker node 1, and 5 on CNMPC 2 - Worker Node 2), and 15 (8 on CNMPC 1 - Worker node 1, and 7 on CNMPC 2 - Worker node 2), and scale up to 21 (7 on CNMPC 1 - Worker node 1, 7 on CNMPC 2 - Worker node 1, and 7 on CNMPC 3 - Worker node 2).
+
+<!-- image -->
+
+<!-- image -->
+
+Fig. 6. Tracking error of ten UAVs when transitioning between CNMPCs. with the new additions, while the remaining five UAVs are controlled by the newly generated CNMPC ′′ 1 .
+
+<!-- image -->
+
+To enable remote cloud-based control for all the agents, we need to ensure bounded time delays in the communication link, regardless of the number of agents. Given that the only messages transmitted between the agents and the cloud are odometry states and control commands, the channel's bandwidth can effectively manage the communication load.
+
+As we monitor the resources on the real-time cloud, we can minimize τ p , which is the processing time required for the CNMPCs to generate feasible control solutions, whenever it is needed, as shown in Fig. 7. Therefore, by applying a sliding window average technique detailed in [25], we maintain τ rrt = τ u + τ d + τ p ( τ rrt , τ u , τ d ∈ R + are the round trip time, the uplink and downlink delays, respectively) within acceptable limits, independent of the number of agents involved.
+
+<!-- formula-not-decoded -->
+
+Fig. 7 demonstrates the relationship between CPU utilization and the average processing time of the CNMPCs, as given in Eq. 10. The data indicate an increase in processing time associated with higher CPU usage. To maintain processing times within desired limits, CPU usage should be kept within the designated blue zone. This is achieved by monitoring of cloud resources, as defined by Eq. (1) (2), which inform the resource scheduling outcomes illustrated in Fig. 5.
+
+<!-- formula-not-decoded -->
+
+Finally, although rule-based scheduling mechanisms are common in cloud computing environments, and allow for the predetermination of rules or policies as discussed in [26],
+
+Fig. 7. Correlation between the CPU and the processing time along with the target CPU utilization range represented with the blue zone.
+
+<!-- image -->
+
+they fall short in ensuring application-specific requirements. In contrast to [26], our work experimentally demonstrates that our scheduling approach not only meets the desired CNMPCs performance while respecting predefined requirements, but also dynamically interacts with the applications. This enables the modification of their operating points and requirements to ensure optimal performance.
+
+## IV. CONCLUSIONS AND FUTURE DEVELOPMENTS
+
+In this work, we have presented a novel approach to address the challenges of deploying complex robotic software in largescale systems, i.e., CNMPCs for multi-agent systems. Our system leverages cloud computing and intelligent scheduling to provide a dynamic and scalable solution for the robotic application. We highlighted the advantages of our system, particularly its ability to handle a variable number of robots. Through experimental tests, we have demonstrated the effectiveness and performance of our system, especially in scenarios where the number of robots is subject to change. Our approach not only optimizes resource utilization but also offers flexibility and adaptability.
+
+Extending our system to real-world robotic deployments is a crucial next step. Testing our approach in diverse environments and with various robot types will provide valuable insights and validation. While the proposed mechanism is evaluated in centralized control schemes, it can be applied to distributed systems, and application agnostic scenarios. Finally, more advanced optimization algorithms for intelligent scheduling can further improve resource allocation and task execution efficiency.
+
+## V. ACKNOWLEDGEMENT
+
+The authors would like to express their gratitude to the Ericsson Cloud Research team, in Lund, Sweden.
+
+## REFERENCES
+
+- [1] O. Saha and P. Dasgupta, 'A Comprehensive Survey of Recent Trends in Cloud Robotics Architectures and Applications,' Robotics , vol. 7, no. 3, 2018.
+- [2] G. Hu, W. P. Tay, and Y. Wen, 'Cloud robotics: architecture, challenges and applications,' IEEE network , vol. 26, no. 3, pp. 21-28, 2012.
+- [3] N. Tian, A. K. Tanwani, J. Chen, M. Ma, R. Zhang, B. Huang, K. Goldberg, and S. Sojoudi, 'A fog robotic system for dynamic visual servoing,' in 2019 International Conference on Robotics and Automation (ICRA) . IEEE, 2019, pp. 1982-1988.
+- [4] N. K. Beigi, B. Partov, and S. Farokhi, 'Real-time cloud robotics in practical smart city applications,' in 2017 IEEE 28th Annual International Symposium on Personal, Indoor, and Mobile Radio Communications (PIMRC) . IEEE, 2017, pp. 1-5.
+- [5] Y. Gao, Y. Liu, Y. Jin, J. Chen, and H. Wu, 'A novel semi-supervised learning approach for network intrusion detection on cloud-based robotic system,' IEEE Access , vol. 6, pp. 50 927-50 938, 2018.
+- [6] M. Nakanoya, S. S. Narasimhan, S. Bhat, A. Anemogiannis, A. Datta, S. Katti, S. Chinchali, and M. Pavone, 'Co-design of communication and machine inference for cloud robotics,' Autonomous Robots , pp. 1-16, 2023.
+- [7] M. Penmetcha and B.-C. Min, 'A deep reinforcement learning-based dynamic computational offloading method for cloud robotics,' IEEE Access , vol. 9, pp. 60 265-60 279, 2021.
+- [8] J. Ahmed Abdulsaheb and D. Jasim Kadhim, 'Real-time slam mobile robot and navigation based on cloud-based implementation,' Journal of Robotics , vol. 2023, no. 1, p. 9967236, 2023.
+- [9] M. A. Santos, A. Ferramosca, and G. V. Raffo, 'Nonlinear model predictive control schemes for obstacle avoidance,' Journal of Control, Automation and Electrical Systems , pp. 1-16, 2023.
+- [10] Y. Zhang, C. Wurll, and B. Hein, 'Kuberos: A unified platform for automated and scalable deployment of ros2-based multi-robot applications,' in 2023 IEEE International Conference on Robotics and Automation (ICRA) . IEEE, 2023, pp. 9097-9103.
+- [11] A. S. Seisa, S. G. Satpute, B. Lindqvist, and G. Nikolakopoulos, 'An edge-based architecture for offloading model predictive control for uavs,' Robotics , vol. 11, no. 4, p. 80, 2022.
+- [12] F. Bertilsson, M. Gordon, J. Hansson, D. M¨ oller, D. S¨ oderberg, Z. Zhang, and K. ˚ Akesson, 'Centralized versus distributed nonlinear model predictive control for online robot fleet trajectory planning,' in 2022 IEEE 18th International Conference on Automation Science and Engineering (CASE) . IEEE, 2022, pp. 701-706.
+- [13] J. Hu, A. Bruno, D. Zagieboylo, M. Zhao, B. Ritchken, B. Jackson, J. Y. Chae, F. Mertil, M. Espinosa, and C. Delimitrou, 'To centralize or not to centralize: A tale of swarm coordination,' arXiv preprint arXiv:1805.01786 , 2018.
+- [14] B. Lindqvist, S. S. Mansouri, P. Sopasakis, and G. Nikolakopoulos, 'Collision avoidance for multiple micro aerial vehicles using fast centralized nonlinear model predictive control,' IFAC-PapersOnLine , vol. 53, no. 2, pp. 9303-9309, 2020.
+- [15] B. Dhiyanesh, 'Dynamic resource allocation for machine to cloud communications robotics cloud,' in 2012 International Conference on Emerging Trends in Electrical Engineering and Energy Management (ICETEEEM) . IEEE, 2012, pp. 451-454.
+- [16] A. S. Seisa, B. Lindqvist, S. G. Satpute, and G. Nikolakopoulos, 'Ecnmpc: Edge-based centralized nonlinear model predictive control for multiagent robotic systems,' IEEE Access , vol. 10, pp. 121 590-121 601, 2022.
+- [17] M. Okasha, J. Kralev, and M. Islam, 'Design and experimental comparison of pid, lqr and mpc stabilizing controllers for parrot mambo mini-drone,' Aerospace , vol. 9, no. 6, p. 298, 2022.
+- [18] M. Islam and M. Okasha, 'A comparative study of pd, lqr and mpc on quadrotor using quaternion approach,' in 2019 7th international conference on mechatronics engineering (icom) . IEEE, 2019, pp. 1-6.
+- [19] E. Small, P. Sopasakis, E. Fresk, P. Patrinos, and G. Nikolakopoulos, 'Aerial navigation in obstructed environments with embedded nonlinear model predictive control,' in 2019 18th European Control Conference (ECC) . IEEE, 2019, pp. 3556-3563.
+- [20] V. N. Sankaranarayanan, G. Damigos, A. S. Seisa, S. G. Satpute, T. Lindgren, and G. Nikolakopoulos, 'Paced-5g: Predictive autonomous control using edge for drones over 5g,' in 2023 International Conference on Unmanned Aircraft Systems (ICUAS) . IEEE, 2023, pp. 1155-1161.
+- [21] A. S. Seisa, B. Lindqvist, S. G. Satpute, and G. Nikolakopoulos, 'An edge architecture for enabling autonomous aerial navigation with embedded collision avoidance through remote nonlinear model predictive control,' Journal of Parallel and Distributed Computing , p. 104849, 2024.
+- [22] 'What is the real-time cloud and how do we get there? ericsson.' Nov 2020, [Online; Accessed 30-January-2024]. [Online]. Available: https://www.ericsson.com/en/blog/2020/11/what-is-real-time-cloud
+- [23] T. Rosado and J. Bernardino, 'An overview of openstack architecture,' in Proceedings of the 18th International Database Engineering &amp; Applications Symposium , 2014, pp. 366-367.
+- [24] F. Furrer, M. Burri, M. Achtelik, and R. Siegwart, 'Rotors-a modular gazebo mav simulator framework,' Robot Operating System (ROS) The Complete Reference (Volume 1) , pp. 595-625, 2016.
+- [25] G. Damigos, A. S. Seisa, S. G. Satpute, T. Lindgren, and G. Nikolakopoulos, 'A resilient framework for 5g-edge-connected uavs based on switching edge-mpc and onboard-pid control,' in 2023 IEEE 32nd International Symposium on Industrial Electronics (ISIE) , 2023, pp. 1-8.
+- [26] S. A. Murad, A. J. M. Muzahid, Z. R. M. Azmi, M. I. Hoque, and M. Kowsher, 'A review on job scheduling technique in cloud computing and priority rule based intelligent framework,' Journal of King Saud University-Computer and Information Sciences , vol. 34, no. 6, pp. 23092331, 2022.

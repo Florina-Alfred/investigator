@@ -1,0 +1,332 @@
+1
+
+## Data-Efficient and Safe Learning for Humanoid Locomotion Aided by a Dynamic Balancing Model
+
+Junhyeok Ahn 1 , Jaemin Lee 1 , and Luis Sentis 2
+
+Abstract -In this letter, we formulate a novel Markov Decision Process (MDP) for safe and data-efficient learning for humanoid locomotion aided by a dynamic balancing model. In our previous studies of biped locomotion, we relied on a low-dimensional robot model, commonly used in high-level Walking Pattern Generators (WPGs). However, a low-level feedback controller cannot precisely track desired footstep locations due to the discrepancies between the full order model and the simplified model. In this study, we propose mitigating this problem by complementing a WPG with reinforcement learning. More specifically, we propose a structured footstep control method consisting of a WPG, a neural network, and a safety controller. The WPG provides an analytical method that promotes efficient learning while the neural network maximizes long-term rewards, and the safety controller encourages safe exploration based on step capturability and the use of control-barrier functions. Our contributions include the following (1) a structured learning control method for locomotion, (2) a data-efficient and safe learning process to improve walking using a physics-based model, and (3) the scalability of the procedure to various types of humanoid robots and walking.
+
+Index Terms -Humanoid and Bipedal Locomotion, Deep Learning in Robotics and Automation, Model Learning for Control
+
+## I. INTRODUCTION AND RELATED WORK
+
+H UMANOID robots are advantageous for mobility in tight spaces. However, fast bipedal locomotion requires precision control of the contact transition process. Many studies have successfully addressed agile and versatile legged locomotion. Analytic approaches have employed differential dynamics of robots to synthesize locomotion controllers. Datadriven approaches have leveraged the representational power of neural networks and designed locomotion policies in an end-to-end manner. Our work combines the advantages of these approaches to achieve locomotion behaviors both safely and efficiently.
+
+Analytic approaches decouple the problem into two subproblems: (1) reducing the complexity of full-body dynamics via simplified models, such as the inverted pendulum [1]-[4]
+
+Manuscript received: December, 19, 2019; Revised March, 9, 2020; Accepted, April 5, 2020.
+
+This paper was recommended for publication by Editor Abderrahmane Kheddar upon evaluation of the Associate Editor and Reviewers' comments. This work was supported by the Office of Naval Research, ONR Grant #N000141512507 and the National Science Foundation, NSF Grant #1724360.
+
+1 J. Ahn and J. Lee are with the Department of Mechanical Engineering, the University of Texas at Austin, Austin, TX, 78712, USA { junhyeokahn91, jmlee87 } @utexas.edu
+
+2 L. Sentis is with the Department of Aerospace Engineering and Engineering Mechanics, the University of Texas at Austin, Austin, TX, 78712, USA lsentis@austin.utexas.edu .
+
+Digital Object Identifier (DOI): see top of this page.
+
+Fig. 1. The left figure illustrates the control structure of a robot, where a controller takes the robot's states and computes joint torques in an end-to-end manner. (a) Analytic approaches compose the controller with a WPG (e.g., a TVR Planner) and a feedback controller (e.g., WBC), whereas (b) end-to-end learning methods train a neural network to compute the joint torques. (c) Our controller includes the footstep policy learning algorithm and WBC, where the footstep policy has three components.
+
+<!-- image -->
+
+or the centroidal model [5]-[7], to generate high-level walking patterns, and then (2) computing feedback joint commands at every control loop so that the robot tracks the behavior of the simplified models. In our recent studies [8], [9], we achieved unsupported passive ankle dynamic locomotion via two computational elements: (1) a high-level footstep planner, called the Time-to-Velocity-Reversal (TVR) planner, based on the Linear Inverted Pendulum Model (LIPM) and (2) a low-level Whole Body Controller (WBC) that tracks the desired trajectories. Although abstractions based on simplified models enable Walking Pattern Generators (WPGs) to provide computational efficiency and tools for stability analysis, they have a limited ability to incorporate complicated physical effects, such as angular momentum and limb dynamics. As a result, using WPGs cause significant footstep tracking errors, requiring arduous parameter tuning [10]. In this letter, we propose and train a policy that compensates for the limited representation accuracy of WPGs and generates practical walking patterns by incorporating simple physical models.
+
+On the other hand, data-driven approaches have demonstrated the possibility of robust and agile locomotion control through Reinforcement Learning (RL). Model-free RL learns a walking policy via explicit trial and error without using knowledge of the dynamics of the robots. In [11], [12], locomotion policies were trained for various environments and achieved robust locomotion behaviors. In contrast, modelbased RL learns a model of a robot through interactions with the environment and leverages the constructed model for planning. The approach in [13] iteratively fitted a local model for a planar walker and performed trajectory optimization, which demonstrated the ability to learn a walking policy efficiently. However, most data-driven approaches for locomotion do not consider the underlying physics of the robot nor prior knowledge and instead train policies from sensor data to joint commands in an end-to-end manner. Therefore, they
+
+require substantial training data and often result in unnatural jerky motions, which make the methods challenging to deploy in real hardware. In contrast to these end-to-end methods, our framework learns a policy from sensor data to footstep locations (instead of joint torques) and utilizes a whole-body controller to track the desired trajectories. In the footstep decision making, we rely on a LIPM and a TVR planner to encourage safe and efficient exploration in policy training.
+
+There have been few works that incorporate physical insight and stable feedback control to learn biped locomotion. In [14], an RL agent learns a set of trajectory parameters instead of joint commands, followed by a feedback controller to stabilize the robot along the resulting trajectory. However, the policy is trained in a model-free manner and can yield infeasible trajectories that make the robot explore unsafe state-space regions. In contrast, our work proposes a structured policy with a safety mechanism as well as a TVR planner and a neural network to foster safe and efficient policy search.
+
+Previous works have explored the idea of learning residual actions combined with analytical models. In [15], a ballthrowing action is adjusted by a trained neural network to mitigate model discrepancies for a ball-tossing robot. In [16], swing foot trajectories generated by a feedback controller are modulated to improve performance and data efficiency for a quadruped. Our proposed algorithm can be seen as an extension of these ideas to bipedal robots that also includes safety considerations. Compared to robot manipulators or quadrupeds, biped robots fall more often and benefit from the use of physics-based models to guide the learning process.
+
+In this paper, we devise a Markov Decision Process (MDP) that combines analytic models and data-driven approaches to achieve agile and robust locomotion. In contrast to end-toend learning such as in [11], [13], [17], [18], whose learning techniques take joint information and map them to joint torque commands, our method learns a policy to make high-level decisions in terms of desired footstep locations. It then uses a feedback whole-body controller to generate locomotion behaviors and the desired reward signals. Our structured footstep control methods includes a TVR planner, a neural network, and a safety controller. The TVR planner provides feasible suboptimal guidance, the neural network maximizes the long-term reward, and the safety controller encourages safe exploration during the learning process. This safety controller learns the residual dynamics of the LIPM and projects the action onto safe regions considering a walking capturability metric. The overall structures of our method and those of related works are shown and compared in Fig. 1.
+
+The proposed MDP formulation has the following advantages: (1) it bridges the gap between analytic and data-driven approaches, which mitigates the limited effect of using simple models; (2) it allows data efficiency and safe learning; and (3) it can be used for different types of locomotion and in different types of robots.
+
+The remainder of this paper is organized as follows. Section II describes an analytic approach for biped locomotion and RL with safety guarantees. Section III proposes an MDP formulation for humanoid locomotion tasks. /btSection IV shows the design of a footstep policy that allows safe exploration and
+
+Fig. 2. (a) shows the SM for locomotion behaviors. The blue and pink stars represent the k th and k +1 th Apex Moment s. (b) shows the walking motion with the SM and its abstraction using the LIPM.
+
+<!-- image -->
+
+data-efficient training. Section V evaluates the effectiveness and generalization of the proposed framework in simulation, and Section VI concludes the paper.
+
+## II. PRELIMINARIES
+
+A. An Analytic Approach to Locomotion
+
+We define a Locomotion State and a state machine with simple structures to represent general locomotion behaviors.
+
+Definition 1. ( Locomotion State ) A locomotion state is defined as a tuple, L := ( L , T L ) .
+
+- L represents a semantic expression of locomotion behaviors: L ∈ {L DS[r/l] , L LF[r] , L LF[l] , L LN[r] , L LN[l] } .
+- The subscripts ( . ) DS[r/l] , ( . ) LF[r/l], and ( . ) LN[r/l] describe locomotion states for double support, lifting the right/left leg, and landing the right/left leg, respectively.
+- T L is a time duration for L and can be chosen based on the desired stepping frequency.
+
+Definition 2. ( State Machine ) We define a state machine as a sequence of Locomotion States:
+
+<!-- formula-not-decoded -->
+
+- The list above is sequential in the order shown.
+- The Locomotion State L LN [ r/l ] terminates when a contact is detected between the swing foot and the ground.
+
+Definition 3. ( Apex Moment and Switching Moment ) Given the SM defined above, an Apex Moment defines the switch between L LF [ r/l ] and L LN[r/l] , and we label it as t a . A Switching Moment defines the middle of L DS[r/l], and we label it as t s .
+
+Let us consider the LIPM for our simplified model. We define the LIPM state as the position and velocity of the Center of Mass (CoM) of the robot on a constant height surface with an expression, x = [ x, y, ˙ x, ˙ y ] glyph[latticetop] ∈ R 4 . The LIPM stance is defined as the location of the pivot and represented by p = [ p x , p y ] glyph[latticetop] ∈ R 2 . We define the LIPM input as the desired location of the next stance with an expression a = [ a x , a y ] glyph[latticetop] ∈ R 2 . We use the subscript k to represent properties in the k th step, for example, x k = [ x k , y k , ˙ x k , ˙ y k ] glyph[latticetop] , p k = [ p k,x , p k,y ] glyph[latticetop] , and a k = [ a k,x , a k,y ] glyph[latticetop] . We further use the subscripts k, a , and k, s to denote the properties of the robot
+
+at the Apex Moment and the Switching Moment at the k th step. For example, x k, ∗ = [ x k, ∗ , y k, ∗ , ˙ x k, ∗ , ˙ y k, ∗ ] glyph[latticetop] = x k ( t k, ∗ ) , where ∗ ∈ { a, s } represents the LIPM state evaluated at the Apex Moment and Switching Moment at the k th step. Because the LIPM stance and LIPM input are invariant during the step, p k,a and a k,a are interchangeable with p k and a k . We also use these subscripts to describe the properties of a robot. For instance, φ bs k,a ∈ SO (3) and w bs k,a ∈ R 3 represent the orientation and angular velocity of a base link, respectively, and φ pv k,a ∈ SO (3) represents the orientation of a stance foot (a pivot) with respect to the world frame at the Apex Moment at the k th step. Fig. 2 illustrates the SM and the abstraction of the locomotion behavior with the LIPM.
+
+The goal of the WPG is to generate a k and the CoM trajectory based on x k,a and p k at the Apex Moment . From the walking pattern, the low-level WBC provides the computation of sensor-based feedback control loops and torque command for the robot to track the desired location of the next stance and the CoM trajectory. Note that the WPG designs the pattern at the Apex Moment at each step, while the WBC computes the feedback torque command at every control loop.
+
+## B. TVR Planner
+
+The differential equation of the LIPM is represented as follows:
+
+<!-- formula-not-decoded -->
+
+where g is the gravitational constant and h is the constant height of the CoM of the point mass.
+
+At the k th step, given an initial condition x k (0) = x k, 0 and a stance position p k , the solution of Eq. (1) yields a state transition map Ψ , with the expression
+
+<!-- formula-not-decoded -->
+
+where
+
+<!-- formula-not-decoded -->
+
+C 1 ( t ) := cosh( ωt ) , C 2 ( t ) := sinh( ωt ) /ω , and C 3 ( t ) := ω sinh( ωt ) , and ω := √ g/h , respectively.
+
+Because the TVR planner determines the desired location of the next stance at the Apex Moment (i.e., t = t k,a ), we set the initial condition as x k (0) = x k,a . With pre-specified time duration T L LN [ r/l ] , we compute the state at the Switching Moment as
+
+<!-- formula-not-decoded -->
+
+From x k,s , the TVR planner computes a k , such that the sagittal velocity ˙ x (and lateral velocity ˙ y , respectively) of the
+
+CoM is driven to zero at the predefined time intervals T x ′ (and T y ′ , respectively) after the LIPM switches to the new stance. These constraints are expressed as
+
+<!-- formula-not-decoded -->
+
+where ξ x ′ := [0 , 0 , 1 , 0] glyph[latticetop] and ξ y ′ := [0 , 0 , 0 , 1] glyph[latticetop] . From Eq. (4), a k is computed with an additional bias term κ x and κ y as
+
+<!-- formula-not-decoded -->
+
+where
+
+<!-- formula-not-decoded -->
+
+C 4 ( T ) := e wT + e -wT w ( e wT -e -wT ) and [ x d , y d ] glyph[latticetop] ∈ R 2 represents a desired position for the CoM of the robot. Note that Eq. (5) is a simple proportional-derivative controller and that T x ′ , T y ′ , κ x , and κ y are the gain parameters used to keep the CoM converging to the desired position. A more detailed derivation of the LIPM was described in [19].
+
+## C. Reinforcement Learning with Safe Exploration
+
+Consider an infinite-horizon discounted MDP with control-affine, deterministic dynamics defined by the tuple ( S , A , T , r, ρ 0 , γ ) , where S is a set of states, A is a set of actions, T : S ↦→ S is the deterministic dynamics, in our case affine in the controls, r : S × A ↦→ R is the reward function, ρ 0 : S ↦→ R is the distribution of the initial state, and γ ∈ (0 , 1) is the discount factor. The control affine dynamics are written as
+
+<!-- formula-not-decoded -->
+
+where s k ∈ S ⊆ R n s , and a k ∈ A ⊂ R n a represent a state and input, respectively. f : S ↦→ S , and g : S ↦→ R n s × n a are the analytic underactuated and actuated dynamics, respectively, while d : S ↦→ S is the unknown part of the system dynamics. Moreover, let π θ ( a | s ) represent a stochastic control policy parameterized by a vector θ . π θ : S×A ↦→ R ≥ 0 maps states to distributions over actions, and V π θ ( s ) represents the policy's expected discounted reward with the expression
+
+<!-- formula-not-decoded -->
+
+where τ ∼ π θ is a trajectory drawn from the policy π θ (e.g., τ = [ s k , a k , · · · , s k + n , a k + n ] ).
+
+For safe exploration in the learning process under uncertain dynamics, the work in [20] employed a Gaussian Process (GP) to approximate the unknown part of the dynamics from the dataset by learning a mean estimate µ d ( s ) and an uncertainty σ 2 d ( s ) in tandem with the policy update with probability confidence intervals on the estimation,
+
+<!-- formula-not-decoded -->
+
+where k δ is a design parameter indicating a confidence. Then, the control input is computed to keep the following state within a given invariant set C = { s ∈ S | h ( s ) ≥ 0 } by computing
+
+<!-- formula-not-decoded -->
+
+## III. MDP FORMULATION
+
+We define a set of states S and a set of actions A associated with the Apex Moment at each step:
+
+<!-- formula-not-decoded -->
+
+where m can be set as + ∞ when considering the infinite steps of the locomotion. Recall from the nomenclatures in Section II-A that x k,a , p k,a and a k,a are the expressions of the LIPM state , LIPM stance , and LIPM input evaluated at the Apex Moment . Note that p k,a and a k,a are interchangeable with p k and a k . Moreover, φ bs k,a and w bs k,a represent the orientation and angular velocity of a base link and φ pv k,a expresses an orientation of the stance foot at the Apex Moment . We divide the state into two parts as
+
+<!-- formula-not-decoded -->
+
+and define a transition function for the upper part of the state based on Eq. (2) as
+
+<!-- formula-not-decoded -->
+
+d ( x k,a , p k ) represents the unknown part of the dynamics fitted via Eq. (8) 1 . The uncertainties are attributed to the discrepancies between the simplified model and the actual robot. Note that the dynamics of the lower part of the states, s l k +1 , cannot be expressed in closed form. Therefore, we optimize our policy in a model-free sense, but utilize the LIPM to provide safe exploration and data efficiency in the learning process.
+
+To train a policy for a locomotion behavior, we adapt a reward function from [18], widely-used for locomotion tasks:
+
+<!-- formula-not-decoded -->
+
+Given w bs k,a = [ w k,x , w k,y , w k,z ] glyph[latticetop] , the Euler ZYX representation [ φ bs k,x , φ bs k,y , φ bs k,z ] glyph[latticetop] of φ bs k and [ φ pv k,x , φ pv k,y , φ pv k,z ] glyph[latticetop] of φ pv , r a is an alive bonus, r b ( s k ) := -w b ‖ ( φ bs k,x , φ bs k,y ) ‖ 2 penalizes the roll and pitch variation to keep the body upright, r t ( s k ) := -w t ‖ ( x d k,a , y d k,a , φ bs , d k,z , φ pv , d k,z ) -( x k , y k , φ bs k,z , φ pv k,z ) ‖ 2 penalizes divergence from the desired CoM positions and the heading of the robot, r s ( s t ) := -w s ‖ ( ˙ x d k,a , ˙ y d k,a , w d k,z ) -( ˙ x k,a , ˙ y k,a , w k,z ) ‖ 2 is for steering the robot with a desired velocity, and r c ( a k ) := -w c ‖ a k ‖ 2 penalizes excessive control input.
+
+1 We use a squared exponential kernel for GP prior to implementation.
+
+## IV. POLICY REPRESENTATION AND LEARNING
+
+Our goal is to learn an optimal policy for desired foot locations. We use the Proximal Policy Optimization (PPO) [17] to learn the policy iteratively. PPO defines an advantage function A π θ ( s k , a k ) := Q π θ ( s k , a k ) -V π θ ( s k ) , where Q π θ ( s k , a k ) is the state-action value function that evaluates the return of taking action a k at state s k and following the policy π thereafter. By maximizing a modified objective function
+
+<!-- formula-not-decoded -->
+
+where r k := π θ ( a k | s k ) π θ old ( a k | s k ) is the importance resampling term that allows us to use the dataset under the old policy π θ old to estimate for the current policy π θ . A k is a short notation for A π θ ( s k , a k ) . The min and clip operator ensures that the policy π θ does not change excessively from the old policy π θ old .
+
+## A. Safe Set Approximation
+
+The work in [21] introduced an instantaneous capture point that enables the LIPM to come to a stop if it places and maintains its stance there instantaneously. Here, we consider i -step capture regions for the LIPM at the Apex Moment :
+
+<!-- formula-not-decoded -->
+
+where
+
+<!-- formula-not-decoded -->
+
+ω = √ g/h , and l max is the maximum step length that the LIPM can reach. Both ω and l max are achieved from the kinematics of a robot. T L LN [ r/l ] is a predefined temporal parameter that represents the time period until the robot lands its swing foot. We conservatively approximate the ellipsoid of Eq. (13) with a polytope and define a safe set of states as
+
+<!-- formula-not-decoded -->
+
+where
+
+<!-- formula-not-decoded -->
+
+The safe set of states in Eq. (14) represents the set of the LIPM state and LIPM stance pairs that could be stabilized without falling by taking i -step. In other words, if an LIPM state and LIPM stance pair is inside the safe set at the k th step, there is always a location for the next stance a k (and the following stance a k +1 in the case of two-step capture region) that stabilizes the LIPM. The projection onto the x and ˙ x plane of capture regions is represented in Fig. 3(b).
+
+Fig. 3. (a) The design of the safety-guaranteeing policy, a k . (b) The projection onto the x and ˙ x plane of the one- and two-step capture regions of the LIPM.
+
+<!-- image -->
+
+## B. Safety Guaranteeing Policy Design
+
+For data-efficient and safe learning, we design our control input with three components:
+
+<!-- formula-not-decoded -->
+
+where a TVR k = Φ ( Ψ( T LN , 0 ; x k , p k ) ) is computed by the TVR planner and a θ k is drawn from a parameterized Gaussian distribution, N ( µ θ , σ θ ) , where µ θ and σ θ denote a mean vector and covariance matrix parameterized by θ 2 , respectively. a SF k : A ↦→ A is the safety projection that takes the sum of a TVR k and a θ k and computes a compensation to make the action safe. Given arbitrary a TVR k and a θ k , the safety-guaranteeing controller a SF k ensures the following LIPM state and LIPM stance pair ( x k +1 ,a , p k +1 ) steered by the final control input ( a k ) stays inside the safe set C . In our problem, Eq. (9) is modified as
+
+<!-- formula-not-decoded -->
+
+Substituting Eq. (11) and Eq. (15) into Eq. (17), and choosing the worst case for the uncertain dynamics in Eq. (8) yields the following inequality constraint:
+
+<!-- formula-not-decoded -->
+
+Considering the safety constraint in Eq. (18) and input boundaries, the optimization problem is summarized in the following Quadratic Programming (QP) and efficiently solved for the safety compensation as
+
+<!-- formula-not-decoded -->
+
+2 In the implementation, we choose two fully connected hidden layers with the tanh activation function.
+
+```
+Algorithm 1: Policy Learning Process Data: M episodes, K data samples Result: π θ Initialize π θ , s 0 ∼ ρ 0 , data array D ; for m = 1 : M do for k = 1 : K do a θ k ∼ π θ , a TVR k ← Eq. (5) ; a SF k ← Eq. (19) ; a k ← Eq. (16) ; r k ← Eq. (12) ; s k +1 ,a ← WBC stabilizes the robot and brings it to the next Apex Moment ; store ( s k , a k , s k +1 , r k ) in D ; end π θ ← Optimize L PPO with D w.r.t θ ; Update GP model with D ; clear D ; end
+```
+
+where glyph[epsilon1] is a slack variable in the safety constraint, and K glyph[epsilon1] is a large constant to penalize safety violation. Here, and
+
+<!-- formula-not-decoded -->
+
+The first segment of the inequality represents a constraint for the safety, and the last two are for the input constraints. The design of the safety-guaranteeing policy is illustrated in Fig. 3(a). Based on the MDP formulation and the policy design, the overall algorithm for efficient and safe learning for locomotion behaviors is summarized in Alg. 1.
+
+## C. Further Details
+
+It is worth taking a look at each of the components in the final action described by Eq. (16). a TVR k + a θ k provides a 'feedforward exploration' in the state space, where the stochastic action explores the TVR planner and optimizes the long-term reward. a SF k projects a TVR k + a θ k onto the safe set of policies and furnishes 'safety compensation'.
+
+Particularly, a TVR k in the feedforward exploration provides learning guidance and resolves two major issues in the safety projection: (1) inactive exploration and (2) the credit assignment problem. Consider, for example, two cases with different feedforward explorations, as illustrated in Fig. 4, whose final control policies are: (a) a k = a θ k + a SF k ( a θ k ) and (b) a k = a TVR k + a θ k + a SF k ( a TVR k + a θ k ) .
+
+In the case of (a) (and (b), respectively), the cyan area represents feedforward exploration expressed by a Gaussian distribution N ( µ θ , σ θ ) (and N ( a TVR k + µ θ , σ θ ) , respectively),
+
+Fig. 4. The safety compensation process. a ∗ k denotes an optimal control input and the orange area represents a set of safe actions that ensures that the state at the next time step stays inside the safe set C . (a) and (b) represent two different instances of feedforward exploration.
+
+<!-- image -->
+
+and the green dots are its samples. The pink arrow represents the safety compensation a SF k ( a θ k ) (and a SF k ( a TVR k + a θ k ), respectively). The black striped area is a distribution of the final action a k , and the yellow dots are its sample.
+
+As Fig. 4(a) shows, there is no intersection between the set of safe actions and the possible feedforward exploration and the feedforward explorations are all projected onto the safe action set. The projection does not preserve the volume in the action space, and it hinders active explorations in the learning. However, Fig. 4(b) leverages the TVR planner as learning guidance and retains the volume in action space to explore over. When it comes to computing a gradient of the long-term reward, the projected actions make it difficult to evaluate the resulting trajectories and assign the credits in the θ space. In other words, as Fig. 4(a) shows, three compensated samples (yellow dots) do not roll out different trajectories, which prevents the gradient descent and results in a local optimum.
+
+## V. SIMULATION RESULTS
+
+We execute a series of experiments with our 10-DoF DRACO biped [9] and the 23-DoF Boston Dynamic's ATLAS humanoid using the DART simulator [22] to evaluate the proposed MDP formulation and policy design. The parameters used in the simulations are summarized in the Table I. The goal of the experiments is three-fold: (1) How does the proposed method learn locomotion better than the baseline approaches (i.e., end-to-end policy search in [17], DeepLoco in [12], and the TVR planner) in terms of data-efficiency, safety, and the quality of the walking behavior? (2) How does each policy component in Eq. (16) contribute to the learning process? (3) Could the proposed approach be generalized to various types of walking (e.g., turning, walking over irregular terrain, and walking given random disturbances)?
+
+## A. Forward Walking
+
+1) Experiment Setup: We include eight MDPs with different states and actions, and train policies for forward walking to demonstrate the effectiveness of our method. As baselines, two MDPs are based on an end-to-end model free learning: each policy learns joint torques τ k either from joint positions and velocities q k , ˙ q k or from the LIPM described in Eq. (10). We implement and adapt another baseline MDP from DeepLoco [12], where a walking policy is composed of a high-level footstep planner and a low-level feedback controller. Note that DeepLoco trains the networks to generate footsteps and joint commands in an end-to-end manner, whereas our method incorporates a simplified model to train footstep policy efficiently. Another difference is that we consider a model-based feedback controller (i.e., WBC) to compute joint commands. The other baseline MDP is set up based on the deterministic policy shown Eq. (5) that maps LIPM information to footstep locations. Finally, we formulate four variations of our proposed MDP by alternating the components of the actions shown in Eq. (16). Fig. 5 summarizes different states and actions for our experiments. We solve the MDPs using the policy search method described in [17] with the reward defined in Eq. (12) except for the DeepLoco baseline where we follow the reward function and the actor-critic method described in [12]. Experiments whose policy is a footstep location are followed
+
+Fig. 5. Eight MDPs with different states and actions for the forward walking.
+
+| Experiments                           | State    | Action                   |
+|---------------------------------------|----------|--------------------------|
+| End-to-end                            | Eq. (10) |                          |
+| learning                              |          |                          |
+| DeepLoco                              |          | (high-level) (low-level) |
+| Analytic method                       |          | ( iv ) Eq. (5)           |
+| Proposed MDPwith different components | Eq. (10) |                          |
+
+by a low-level WBC. For example, a cubic spline trajectory is generated with a footstep decision made by the MDPs and converted to an operational space task. At the same time, a CoM position and torso orientation task are also specified with different priorities to maintain the robots upright.
+
+2) Analysis: Multiple policies are trained in each setup to regulate forward walking. The learning processes of the proposed MDP, as well as the baseline performance of the TVR and end-to-end learning, are illustrated in Fig. 6 with some useful metrics.
+
+TABLE I SIMULATION PARAMETERS
+
+|               | LIPM              | SM                | a TVR                                   | a θ       | a SF                      | Reward   | Reward   | Reward   | Behavior   | Behavior         |
+|---------------|-------------------|-------------------|-----------------------------------------|-----------|---------------------------|----------|----------|----------|------------|------------------|
+|               | [ h, l max ]      | [ T LN ,T LF ]    | [ T x ′ ,T y ′ ,κ x ,κ y ]              | Layer     | [ K glyph[epsilon1] , η ] | r a      | w b      | w t      | w c        | [ ˙ x d ,ω d z ] |
+| DRACO Walking | [0 . 93 , 0 . 7]  | [0 . 16 , 0 . 16] | [0 . 22 , 0 . 22 , - 0 . 18 , - 0 . 18] | [64 , 64] | [10 5 , 0 . 8]            | 5 . 0    | 3 . 0    | 3 . 0    | 1 . 0      | [0 . 3 , 0]      |
+| ATLAS Walking | [0 . 82 , 0 . 55] | [0 . 23 , 0 . 23] | [0 . 15 , 0 . 15 , - 0 . 16 , - 0 . 16] | [64 , 64] | [10 5 , 0 . 8]            | 5 . 0    | 3 . 0    | 3 . 0    | 1 . 0      | [0 . 15 , 0]     |
+| ATLAS Turning | [0 . 82 , 0 . 55] | [0 . 23 , 0 . 23] | [0 . 15 , 0 . 15 , - 0 . 16 , - 0 . 16] | [64 , 64] | [10 5 , 0 . 8]            | 5 . 0    | 5 . 0    | 5 . 0    | 1 . 0      | [0 , 0 . 09]     |
+
+Fig. 6. Learning curves for the experiments are shown here demonstrating learning performance for forward walking. The average return, the number of terminations per episode are shown throughout the training. Each of the curves is plotted with its mean and standard deviation across five runs. Note that in the average return plot, the green and gray curves use the green vertical axis, and the purple curve uses the purple vertical axis on the right side. At the bottom, we run an episode with trained policies from different setups and show the travel distance, walking speed, walking stride, and the average of the two-norm of the ZMP in the local frame.
+
+<!-- image -->
+
+In the average return plot, the end-to-end learning with the LIPM information (gray curve) cannot achieve the motion of walking, whereas the other end-to-end learning with the joint information (green curve) shows a convergence of the walking behavior to unnatural motions. This shows that the LIPM information itself is not informative enough to calculate joint torques in an end-to-end manner. It is worth mentioning that the end-to-end learning with joint state information takes a more substantial dataset (denoted by ∆ ) to generate desired locomotion behavior than using the proposed MDP. DeepLoco (purple curve) shows a faster convergence rate than the end-toend learning in the case of DRACO thanks to the hierarchical policy structure. However, DeepLoco requires more data than our approach since it has to train the low-level feedback controller instead of using the WBC. Furthermore, DeepLoco does not scale well to ATLAS in our implementation.
+
+The proposed MDP using the conservative one-step capture region (blue curve) helps to accelerate the learning at the beginning phase, but the one using the relaxed two-step capture region (orange curve) eventually achieves a better walking policy in terms of the average return. Training with a heuristic bound ( 0 . 1m ) instead of using the safety projection (red curve) exhibits relatively good performance, whereas the
+
+Fig. 7. Various types of locomotion behaviors: turning, walking over irregular terrains, and walking with random disturbances. (a) The average return is shown throughout the training. (b) The trained policy for the disturbance experiments is evaluated. The CoM velocities are plotted when three different disturbances occur. Note that the background colors represent the locomotion states in Fig. 2.
+
+<!-- image -->
+
+one without the TVR planner (pink curve) rarely improves throughout the updates. The results reflect the issues addressed in Section IV-C. The number of terminations per episode decays as the uncertain parts of the dynamics are revealed throughout the training.
+
+We evaluate the quality of walking resulting from different setups. In Fig. 6, the trained policy from the blue curve uses conservative safety criteria, which results in smaller strides and slower walking speed than for the other methods. The walking behavior resulting from the green curve policy takes longer strides with faster walking speeds. However, as we can infer from the ZMP graph, the policy from the green curve shows unnatural walking motions and yields a short travel distance per episode.
+
+## B. Generalization to various types of locomotion
+
+1) Experiment Setup: We consider three additional experiments in simulation to show that our proposed formulation can be generalized to various types of locomotion: turning, walking over irregular terrain, and walking given random disturbances. For the turning experiment, the low-level WBC controls the robot's torso, pelvis, and feet orientation. We consider irregular terrains including tilted ground at angles of between -10 ◦ and 10 ◦ . In addition, random disturbances are applied at intervals of 0 . 1sec in the lateral and sagittal directions with a magnitudes between -600N and 600N . Note that we apply the disturbances both before and after the Apex Moment . For all experiments, the states, actions, and reward function are identical to the MDP formulation we described in Section III. We train the policies using the policy search method described in [17].
+
+2) Analysis: The learning processes for each experiment, as well as the baseline performance of the TVR planner, are illustrated in Fig. 7(a). Our proposed approach succeeds in achieving locomotion behaviors based on average returns. The
+
+stance foot orientation captures the heading of the robot and the terrain information, and the neural network used in the learning process adapts to walking in new environments.
+
+The experiment of walking with random disturbances shows an increment of the average return with high variance. It demonstrates robust walking under mild disturbances, but the average return is not as high as the return without disturbances shown in Fig. 6. For further analysis, we evaluate a trained policy in the presence of three different types of disturbances: (1) a disturbance with a magnitude of 600N on both the sagittal and the lateral directions before the Apex Moment (i.e., in L LF ), (2) a disturbance with a magnitude of 300N on both the sagittal and the lateral directions after the Apex Moment (i.e., in L LN ), and (3) a disturbance with a magnitude of 600N on both the sagittal and the lateral directions after the Apex Moment (i.e., in L LN ). The velocity profiles of the CoM are shown in Fig. 7(b). The first type of disturbance is dealt with by the robot using a single footstep. In the figure, one can see the CoM velocity in the lateral direction ( ˙ y ) being directed back to near zero in the next double support phase, even with the large disturbances. The second type of disturbance cannot be rejected by using a single step because that footstep is determined at the Apex Moment that precedes the disturbance. However, this can still be compensated for in future walking steps, unless the magnitude of the disturbance is significant enough to make the robot fall immediately. In the last case, the magnitude of the disturbance is 600N and makes the robot fall right away. Future work includes incorporating a disturbance observer and continuous disturbance detection during the swing motion as described in [21]. In such a case, the policy described in Eq. (16) will re-calculate new footstep locations to reject all disturbance within the first footstep.
+
+## VI. CONCLUDING REMARKS
+
+In this letter, we describe an MDP formulation for dataefficient and safe learning for locomotion. Our formulation combines analytic and data-driven approaches to make highlevel footstep decisions based on the LIPM. The proposed policy includes a TVR planner, a neural network, and a safety controller. The TVR planner computes achievable suboptimal guidance, the neural network modulates the guidance to maximize the long-term reward, and the safety controller facilitates safe exploration during the learning process. The safety controller learns the unknown part of dynamics in tandem with the policy updates and compensate for unsafe actions from the neural network based on the capturability metric and the use of control-barrier function. We thoroughly evaluate the effectiveness of the proposed method show how it could be generalized for various types of walking with two humanoids. Our contributions include: (1) a structured learning control method that mitigates the limited effect of using simple models and generates agile and robust locomotion, (2) a dataefficient and safe learning process to reinforce walking using a physics-based model, and (3) the scalability of the method to various types of humanoid robots and walking. In the near future, we plan to implement this framework into a real bipedal robot called DRACO. In the past, we have encountered many problems using the LIPM without a learning process causing complicated tuning procedures. We believe that the policy learning technique presented here will automatically determine the gap between the model and reality and will adjust the policy accordingly with minimal tuning.
+
+## REFERENCES
+
+- [1] Kuindersma et al. , 'Optimization-based locomotion planning, estimation, and control design for the atlas humanoid robot,' Autonomous Robots , vol. 40, no. 3, pp. 429-455, Mar 2016.
+- [2] Rezazadeh et al. , 'Spring-Mass Walking With ATRIAS in 3D: Robust Gait Control Spanning Zero to 4.3 KPH on a Heavily Underactuated Bipedal Robot,' in ASME 2015 Dynamic Systems and Control Conference . Columbus: ASME, Oct. 2015, p. V001T04A003.
+- [3] S. Caron et al. , 'Stair climbing stabilization of the HRP-4 humanoid robot using whole-body admittance control,' in IEEE International Conference on Robotics and Automation , May 2019.
+- [4] S. Kajita et al. , 'Biped walking pattern generation by using preview control of zero-moment point,' in 2003 IEEE International Conference on Robotics and Automation , vol. 2, Sep. 2003, pp. 1620-1626 vol.2.
+- [5] J. Carpentier and N. Mansard, 'Multicontact locomotion of legged robots,' IEEE Transactions on Robotics , vol. 34, no. 6, pp. 1441-1460, Dec 2018.
+- [6] A. Herzog et al. , 'Structured contact force optimization for kinodynamic motion generation,' in 2016 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , Oct 2016, pp. 27032710.
+- [7] D. E. Orin, A. Goswami, and S.-H. Lee, 'Centroidal dynamics of a humanoid robot,' Autonomous Robots , vol. 35, no. 2, pp. 161-176, Oct 2013. [Online]. Available: https://doi.org/10.1007/s10514-013-9341-4
+- [8] D. Kim et al. , 'Dynamic locomotion for passive-ankle biped robots and humanoids using whole-body locomotion control,' Accepted to the International Journal of Robotics Research , 2020.
+- [9] J. Ahn, D. Kim, S. Bang, N. Paine, and L. Sentis, 'Control of a high performance bipedal robot using viscoelastic liquid cooled actuators,' in 2019 IEEE-RAS 19th International Conference on Humanoid Robots (Humanoids) , Oct 2019, pp. 146-153.
+- [10] Y.-M. Chen and M. Posa, 'Optimal reduced-order modeling of bipedal locomotion,' arXiv preprint arXiv:1909.10111 , 2019.
+- [11] Heess et al. , 'Emergence of locomotion behaviours in rich environments,' arXiv preprint arXiv:1707.02286 , 2017.
+
+[12]
+
+X. B. Peng, G. Berseth, K. Yin, and M. van de Panne, 'Deeploco: Dy- namic locomotion skills using hierarchical deep reinforcement learning,'
+
+ACM Transactions on Graphics
+
+, vol. 36, no. 4, 2017.
+
+- [13] S. Levine et al. , 'Guided policy search,' in Proceedings of the 30th International Conference on Machine Learning , ser. Proceedings of Machine Learning Research, vol. 28, no. 3, 17-19 Jun 2013, pp. 19.
+- [14] G. A. Castillo et al. , 'Hybrid zero dynamics inspired feedback control policy design for 3d bipedal locomotion using reinforcement learning,' arXiv preprint arXiv:1910.01748 , 2019.
+- [15] A. Zeng, S. Song, J. Lee, A. Rodriguez, and T. Funkhouser, 'Tossingbot: Learning to throw arbitrary objects with residual physics,' arXiv preprint arXiv:1903.11239 , 2019.
+- [16] A. Iscen et al. , 'Policies modulating trajectory generators,' arXiv preprint arXiv:1910.02812 , 2019.
+- [17] J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov, 'Proximal policy optimization algorithms,' arXiv preprint arXiv:1707.06347 , 2017.
+- [18] G. Brockman, V. Cheung, L. Pettersson, J. Schneider, J. Schulman, J. Tang, and W. Zaremba, 'Openai gym,' arXiv preprint arXiv:1606.01540 , 2016.
+- [19] J. Ahn et al. , 'Fast kinodynamic bipedal locomotion planning with moving obstacles,' in 2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , Oct 2018, pp. 177-184.
+- [20] R. Cheng, G. Orosz, R. M. Murray, and J. W. Burdick, 'End-to-end safe reinforcement learning through barrier functions for safety-critical continuous control tasks,' arXiv preprint arXiv:1903.08792 , 2019.
+- [21] T. Koolen, T. de Boer, J. Rebula, A. Goswami, and J. Pratt, 'Capturability-based analysis and control of legged locomotion, part 1: Theory and application to three simple gait models,' The International Journal of Robotics Research , vol. 31, no. 9, pp. 1094-1113, 2012.
+- [22] J. Lee et al. , 'Dart: Dynamic animation and robotics toolkit,' The Journal of Open Source Software , vol. 3, no. 22, p. 500, 2018.

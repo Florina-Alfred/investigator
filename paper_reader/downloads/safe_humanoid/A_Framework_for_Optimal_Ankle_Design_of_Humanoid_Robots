@@ -1,0 +1,379 @@
+## A Framework for Optimal Ankle Design of Humanoid Robots
+
+Guglielmo Cervettini 1 , 2 ,⋆ , Roberto Mauceri 1 , 2 ,⋆ , Alex Coppola 1 , Fabio Bergonti 1 , Luca Fiorio 3 , Marco Maggiali 3 , Daniele Pucci 1
+
+Abstract -The design of the humanoid ankle is critical for safe and efficient ground interaction. Key factors such as mechanical compliance and motor mass distribution have driven the adoption of parallel mechanism architectures. However, selecting the optimal configuration depends on both actuator availability and task requirements. We propose a unified methodology for the design and evaluation of parallel ankle mechanisms. A multiobjective optimization synthesizes the mechanism geometry, the resulting solutions are evaluated using a scalar cost function that aggregates key performance metrics for cross-architecture comparison. We focus on two representative architectures: the Spherical-Prismatic-Universal (SPU) and the RevoluteSpherical-Universal (RSU). For both, we resolve the kinematics, and for the RSU, introduce a parameterization that ensures workspace feasibility and accelerates optimization. We validate our approach by redesigning the ankle of an existing humanoid robot. The optimized RSU consistently outperforms both the original serial design and a conventionally engineered RSU, reducing the cost function by up to 41% and 14%, respectively.
+
+## I. INTRODUCTION
+
+Modern humanoid robots are increasingly envisioned as versatile agents capable of operating in human-centric environments and executing complex locomotion and manipulation tasks with a high degree of agility and dexterity . These capabilities are essential not only for navigating unstructured terrains and ensuring safe task execution in real-world scenarios, but also for achieving levels of dynamism that can rival or exceed human performance. Realizing such functionality requires not only continued advancements in control algorithms but also fundamental improvements in mechanical design, particularly in the limbs that interact directly with the environment [1].
+
+Two key factors critically influence agility : the distribution of mass throughout the robot and the mechanical compliance of its joints. A higher placement of the center of mass (CoM), especially by reducing distal masses in the lower body, improves energy efficiency during movement [2]. In this context, parallel mechanisms architectures offer a crucial advantage by allowing heavy actuators to be positioned proximally [3], [4]. Mechanical compliance - specifically, high backdrivability - enables safer and more effective interaction with the environment. Enhanced compliance improves both robustness to unexpected terrain asperities and the ability to dissipate energy safely during dynamic movements [5]. These properties are crucial to achieving more forgiving gait patterns and reducing the risk of damage during high-agility tasks.
+
+⋆ The two authors equally contributed to the paper.
+
+1 Artificial and Mechanical Intelligence Laboratory, Istituto Italiano di Tecnologia (IIT). 2 School of Computer Science, University of Manchester. 3 iCub Tech Facility, Istituto Italiano di Tecnologia (IIT).
+
+Fig. 1: Examples of two-degrees-of-freedom ankle mechanisms. From left to right: serial, SPU and RSU architectures.
+
+<!-- image -->
+
+Among all limb joints, the ankle is especially influential in locomotion, as it is usually the first to respond to ground interactions. For this reason, improving its mechanical design can yield significant gains in agility. Reflecting this importance, recent years have seen a widespread adoption of parallel mechanisms specifically for ankle joints in nextgeneration humanoid robots. Notable examples include Tesla's Optimus, Unitree's G1, PNDbotics' Adam, Agility Robotics' Digit, Fourier's N1, LOLA [6], Pandora [7], and Kangaroo [8].
+
+Parallel mechanisms offer several inherent advantages over serial architectures: increased structural rigidity, higher positioning precision through averaging of chain errors, reduced actuator size requirements due to torque sharing, and improved dynamics from the relocation of heavy components to more proximal frames [9]. However, parallel structure design presents significant challenges. It demands careful selection of a larger set of geometric parameters and must account for substantial variations in joint torques and velocities across the workspace [3]. Unlike serial chains, where performance metrics can often be localized to specific joints, parallel architectures require a global, coupled optimization [10].
+
+Geometric parameter synthesis of parallel mechanisms can be tackled with optimization algorithms [11]-[15]. However, their application to ankle mechanisms remains limited. Choosing the kinematic structure itself is equally critical. Several surveys outline possible structures [16], [17], but this choice is highly context-dependent, influenced by target locomotion tasks, available actuators, and design constraints. As a result, these surveys lack quantitative criteria for identifying the most appropriate solution. Consequently, designers currently lack a systematic tool to support both architecture selection and parameter tuning, guided by quantitative performance indicators tailored to specific applications.
+
+Here, we present a unified framework for the design and comparative evaluation of two types of kinematics structures:
+
+the Spherical-Prismatic-Universal (SPU) mechanism with linear actuators, and the Revolute-Spherical-Universal (RSU) mechanism with rotary actuators, depicted in Fig.1. Our methodology identifies the optimal actuator configuration, kinematic structure, and geometric parameters through a multiobjective optimization process, combined with a cost-functionbased evaluation strategy that enables cross-architecture and cross-actuator comparisons. The method relies on kinematic modeling and a novel RSU parameterization that ensures workspace feasibility.
+
+## II. BACKGROUND
+
+## A. Notation
+
+- Geometric points in the 3D Euclidean space are denoted by uppercase upright letters P ∈ E 3 , while geometric vectors in the 3D Euclidean vector space are denoted by bold lowercase letters v ∈ ⃗ E 3 . The subtraction of two points results in a vector, i.e. (Q -P) ∈ ⃗ E 3 .
+- The Euclidean norm of a vector v is denoted by ∥ v ∥ ∈ R . The notation ˆ v indicates a unit vector, i.e. ∥ ˆ v ∥ ≜ 1 .
+- Frames are designated by uppercase calligraphic letters A ≜ (ˆ x A , ˆ y A , ˆ z A ) . We only use orthonormal frames.
+- Coordinates of vectors expressed with respect to (w.r.t.) a frame A are indicated as A v ≜ [ v x , v y , v z ] ⊤ ∈ R 3 .
+- A R B ∈ SO(3) is the rotation matrix aligning A with B . It can also be interpreted as the coordinate transformation from B to A . The symbols R x , R y , R z ∈ SO(3) denote the elementary rotations around the coordinate axes.
+
+## B. Parallel Mechanisms
+
+Parallel mechanisms represent a distinct class of mechanical systems characterized by their closed-loop architecture, wherein a moving platform, or end-effector (EE), is connected to a fixed base, or world (W), through multiple kinematic chains [18].
+
+1) Closed Kinematic Chains: The foundation of parallel mechanisms lies in the concept of closed kinematic chains . A closed kinematic chain is defined as any kinematic chain that contains one or more loops in its connectivity graph representation [19] (see Fig.2).
+
+Parallel mechanisms represent a specific application of closed kinematic chains. They are constructed as closed chains comprising a fixed base and a moving platform connected by a set of 'legs', that are typically serial kinematic chains (Fig.2). The loop closure equations , which are essential for the kinematic analysis of these mechanisms, directly arise from the presence of these closed chains. In particular, the inverse kinematics (IK) problem, derived from these equations, is generally nonlinear and may admit no solution or multiple solutions [20].
+
+2) Jacobian Matrix: The Jacobian matrix is a fundamental tool in the differential analysis of mechanism motion [21]. Mathematically, it provides a linear relationship between: (i) the joint velocities ˙ q and the resulting twist v (linear and angular velocities) of the EE v ≜ J ( q ) ˙ q , (ii) the wrench f (forces and torques) applied at the EE and the corresponding forces or torques τ of the actuators τ =
+
+J ( q ) ⊤ f . The Jacobian matrix explicitly depends on the system configuration q .
+
+The Jacobian matrix provides a powerful mathematical tool for identifying singular configurations [22]. A key indicator of a singularity is when the rank of the Jacobian matrix drops below its maximum possible value. A singular Jacobian matrix implies that there are certain directions of EE motion that cannot be achieved by any finite joint velocities, and conversely, unbounded actuator forces could be required to achieve a finite wrench at the EE. Kinematic inversion also becomes ill-posed or impossible at singularities. Therefore, understanding and avoiding singular configurations are crucial for the safe and effective operation of parallel mechanisms.
+
+3) Manipulability Ellipsoid: The manipulability ellipsoid is a valuable geometric construct used to assess a mechanism's capability to move or exert force in different directions from a given configuration [23]. It provides a visual representation of the mechanism's dexterity and force capabilities. A manipulability ellipsoid that is closer to a sphere in shape suggests a more uniform motion capability in all directions, a property known as isotropy. In contrast, an ellipsoid with a more flattened or elongated shape indicates anisotropic behavior, meaning the mechanism is better suited for motion or force exertion along certain axes than others. The manipulability ellipsoid is mathematically derived from the Jacobian matrix of the mechanism as M ( q ) ≜ J ( q ) J ( q ) ⊤ . The eigenvalues and eigenvectors of M ( q ) define the shape and orientation of the ellipsoid, respectively. The manipulability ratio , defined as the ratio between the largest λ max and the smallest λ min eigenvalues of M ( q ) serves as a useful indicator of the mechanism's manipulability [21]:
+
+<!-- formula-not-decoded -->
+
+## III. KINEMATIC ANALYSIS OF THE MECHANISMS
+
+In this section, we will analyze the geometry of two parallel mechanisms. First, we will introduce the topological graphs of the mechanisms under study. We will then move on to a geometric representation that will allow us to write the loop closure equations and derive the IK closed-form expression.
+
+In this context, the role of the fixed base for the mechanism will be played by the shin, while the foot will serve as the end-effector. The shin W and the foot F are connected to each other through the interposition of 3 legs (Fig. 2). The central leg consists of a single universal joint U 0 that directly connects the shin and the foot. The angles ( φ, ϑ ) associated to this joint define the orientation of the foot w.r.t. the shin. The other two legs, which are topologically equivalent to each other and indexed by the letter i ∈ { 1 , 2 } , are more complex and characterize the mechanisms under consideration. The SPU mechanism has, as its leg i , a serial kinematic chain connecting four links through the sequence of joints: spherical S i , prismatic P i , and universal U i . The RSU mechanism has, as its leg i , a serial kinematic chain connecting four links through the sequence of joints: revolute R i , spherical S i , and universal U i .
+
+The degrees of mobility of these two spatial mechanisms are equal to 2 and, in this case, can be evaluated using the
+
+Fig. 2: Connectivity graphs of SPU and RSU mechanisms. Links are represented as nodes and joints as edges. Each mechanism has 3 'legs' connecting the world W to the end-effector F (foot). Each graph contains 2 independent loops.
+
+<!-- image -->
+
+Gr¨ ubler-Kutzbach criterion [24]. Consequently, the actuation of only two joints is required to fully control the EE pose.
+
+A natural choice is to actuate the joints with a single degree of freedom. Specifically, in the SPU mechanism, control is achieved via the elongations of the prismatic joints, denoted as ζ 1 and ζ 2 , while in the RSU mechanism, it is governed by the angles of the revolute joints, α 1 and α 2 . W is the world frame and F is the foot frame. The orientation of F w.r.t. W is defined by the roll and pitch angles ( φ, ϑ ) and the corresponding transformation is given by W R F ( φ, ϑ ) ≜ R y ( ϑ ) R x ( φ ) . Both mechanisms feature a spherical joint within their kinematic loops. It is convenient to open the mechanism at the level of this joint, as this approach simplifies the kinematic closure by imposing the coincidence of two points S i and S ′ i (3 equations for each independent kinematic loop).
+
+## A. SPU Parallel Mechanism - Closed-form IK
+
+Considering the use of actuated prismatic joints, the IK problem is formulated as the determination of the joint linear displacements q = [ ζ 1 , ζ 2 ] ⊤ required to achieve a desired foot orientation w.r.t. W in terms of roll and pitch angles φ, ϑ . In the SPU mechanism, depicted in Fig.3a, we define:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+W a i , F b i ∈ R 3 are constant tuples and represent the geometric parameters of the mechanism we consider in our design. The coordinates of d i and l i w.r.t. W are:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+with F R U i ( φ i , ϑ i ) ≜ [ R y ( ϑ i ) R x ( φ i )] ⊤ and U i l i ( ζ i ) ≜ [0 , 0 , ζ i ] ⊤ . The angles φ i , ϑ i are the roll and pitch angles associated to the universal joint U i . The loop closure equation is directly derived by imposing S ′ i ≡ S i , i.e. W (S ′ i -U i ) = W (S i -U i ) :
+
+<!-- formula-not-decoded -->
+
+To make the equation independent from the unknown variables φ i and ϑ i , the Euclidean squared norm is taken on both sides of (3). Since Euclidean norms are invariant under orthogonal transformations, the reference frame superscript is omitted:
+
+<!-- formula-not-decoded -->
+
+with ∥ d i ( φ, ϑ ) ∥ 2 = ∥ a i ∥ 2 + ∥ b i ∥ 2 -2 W a ⊤ i W R F ( φ, ϑ ) F b i (derived from (2)). Finally, the IK results in:
+
+<!-- formula-not-decoded -->
+
+There are thus two possible solutions. For design reasons, we adopt the solution with the positive sign. The solution with the negative sign, although mathematically admissible, would correspond to an elongation occurring in the direction opposite to ˆ z U i , which would intersect with the foot.
+
+## B. RSU Parallel Mechanism - Closed-form IK
+
+Considering the use of actuated revolute joints, the IK problem is formulated as the determination of the joint angular displacements q = [ α 1 , α 2 ] ⊤ required to achieve a desired foot orientation w.r.t. W in terms of roll and pitch angles φ, ϑ . In the RSU mechanism, depicted in Fig. 3b, we define:
+
+<!-- formula-not-decoded -->
+
+W a i , F b i ∈ R 3 are constant 3 -tuples and represent some of the geometric parameters of the mechanism. The coordinates of d i , c i (crank), and r i (rod) w.r.t. W are:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+where F R U i ( φ i , ϑ i ) = [ R y ( ϑ i ) R x ( φ i )] ⊤ , U i r i = [0 , 0 , r i ] ⊤ , W R R i ( α i ) = R z ( ψ i ) R x ( α i ) , and R i c i = [0 , c i , 0] ⊤ . The angles φ i , ϑ i are the roll and pitch angles associated to the universal joint U i . The constant quantities c i , r i ∈ R + , and ψ i ∈ S 1 are the remaining geometric parameters of the mechanism we consider in our design. The quantities c i and r i represent, respectively, the crank and rod lengths, while the angle ψ i is the rotation of the rotary actuator axis about the vertical axis of the world frame.
+
+The loop closure equation is directly derived by imposing S ′ i ≡ S i , i.e. W (S ′ i -U i ) = W (S i -R i ) + W (R i -U i ) :
+
+<!-- formula-not-decoded -->
+
+To make the equation independent from the unknown variables φ i and ϑ i , the Euclidean squared norm is taken on both sides of (6). Since Euclidean norms and dot products are invariant under orthogonal transformations, the reference frame superscript is omitted:
+
+<!-- formula-not-decoded -->
+
+with ∥ d i ( φ, ϑ ) ∥ 2 = ∥ a i ∥ 2 + ∥ b i ∥ 2 -2 W a ⊤ i W R F ( φ, ϑ ) F b i (derived from (5)). Building on (7), the corresponding expression is derived:
+
+<!-- formula-not-decoded -->
+
+To proceed with calculation, world coordinates are used:
+
+<!-- formula-not-decoded -->
+
+(b) RSU mechanism: 1) shin, 2) foot, 3) crank, 4) rod.
+
+<!-- image -->
+
+<!-- image -->
+
+(a) SPU mechanism: 1) shin, 2) foot, 3) slider, 4) linear guide. Fig. 3: Kinematic diagrams of the SPU (a) and RSU (b) mechanisms.
+
+<!-- formula-not-decoded -->
+
+A linear combination of sine and cosine, as shown above, can be represented in polar form as follows:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+where ρ i ≜ ˜ d 2 y, i + ˜ d 2 z, i and ϕ i ≜ arctan2 ( ˜ d y, i , ˜ d z, i ) . Therefore, the two possible solutions of the IK are:
+
+<!-- formula-not-decoded -->
+
+The equation, and consequently the IK problem, admits solutions if the following existence condition is satisfied:
+
+<!-- formula-not-decoded -->
+
+If the condition is satisfied as an equality, the two solutions coincide. When k i /ρ i = 1 , the unique solution is π/ 2 -ϕ i . When k i /ρ i = -1 , the unique solution is -π/ 2 -ϕ i . In both cases, this corresponds to the configuration where the crank and the rod are perfectly aligned, which can result in either an overlapping or non-overlapping condition for the two links. When it is satisfied with an inequality, there are two distinct solutions (positioned symmetrically w.r.t. the axis inclined as π/ 2 -ϕ i ). If the condition is not satisfied, no feasible solution exists. In other words, due to the given geometric parameters and the desired foot orientation, it is not possible to close the mechanism by connecting the crank and the rod through the spherical joint. The existence condition can be also reformulated by using (8) as:
+
+<!-- formula-not-decoded -->
+
+## C. Reparameterization of the RSU Mechanism
+
+When the geometric parameters of the mechanism are chosen arbitrarily, there is no guarantee that the existence condition (9) is satisfied for all desired values of foot pitch and roll. It would therefore be beneficial to perform a reparameterization of the mechanism such that this condition is inherently fulfilled. In other words, the desired operational region for the foot should be entirely contained within the region where the IK problem admits solutions (configuration space of the mechanism), regardless of the specific values assigned to the new parameters (Fig. 4).
+
+- 1) Derive the lower and upper bounds for the crank length: We want to rewrite (9) in such a way we can make the crank length c i explicit. First of all, it is possible to write:
+
+<!-- formula-not-decoded -->
+
+where Ω is the desired operational region for the mechanism. Then, we note that r 2 i -c 2 i = ( r i + c i )( r i -c i ) . The quantity r i + c i represents the maximum distance d i, max between the universal joint U i and the revolute joint R i that can be reached by the closed mechanism, while r i -c i represents the minimum distance d i, min. These cases occur when the crank and the rod are aligned. It follows that:
+
+<!-- formula-not-decoded -->
+
+We can also define the minimum and maximum U i -R i distance that can be reached by the mechanism given a desired operational region Ω (in general, different from d i, min and d i, max):
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+We want to compute the minimum possible value for the crank length c i, min, so we impose that d ⋆ i, min = d i, min and d ⋆ i, max = d i, max (worst case scenario). At this point, the inequality can be rewritten as:
+
+<!-- formula-not-decoded -->
+
+The parameter c i must be greater than all values assumed by the preceding expression as the pitch and roll angles vary. Consequently, it must be greater than or equal to a minimum admissible value c i, min, defined as the maximum value attained by the expression over the considered domain:
+
+<!-- formula-not-decoded -->
+
+The inequality does not imply any upper bound for the crank length. We can introduce a new parameter, γ i ∈ [0 , 1] . When this parameter is equal to 0, the crank length takes on its minimum value; as it approaches 1, the crank length approaches infinity:
+
+<!-- formula-not-decoded -->
+
+2) Derive the lower and upper bounds for the rod length: Now c i = c i ( γ i ) is a known parameter. We want to rewrite (9) in such a way we can make the rod length r i explicit. We can start again from the inequality constraint:
+
+<!-- formula-not-decoded -->
+
+By the definition of the absolute value function, the previous inequality is equivalent to the following system:
+
+<!-- formula-not-decoded -->
+
+The quantity r 2 i must lie within intervals whose bounds vary as a function of the roll and pitch angles. In order to simultaneously satisfy this infinite set of conditions, it is sufficient for r 2 i to be contained within the intersection of all such intervals. This intersection has the following bounds:
+
+<!-- formula-not-decoded -->
+
+Now, r i can be expressed as a convex combination of r i, min and r i, max, using a new parameter δ i ∈ [0 , 1] . When this parameter is equal to 0, the rod length takes on its minimum value, when it is equal to 1, the rod length takes on its maximum value:
+
+<!-- formula-not-decoded -->
+
+## IV. MECHANISMS EVALUATION FRAMEWORK
+
+This section outlines the methodology used to enable consistent, cross-architecture comparison of ankle mechanisms equipped with different actuators. The evaluation process comprises two main stages.
+
+In the first stage, described in Section IV-A, a dedicated multi-objective optimization is performed for each actuator-architecture pair. The goal is to explore the design space and identify a population of geometrically feasible mechanisms that minimize key performance objectives. This optimization is essential because the relationship between geometric parameters and performance is highly nonlinear and architecture-dependent. Moreover, each actuator imposes unique physical and dynamic constraints - such as size, mounting requirements, and force/velocity limits - which must be reflected in a custom design space (feasible set Π ) for each combination. As a result, the optimization must be repeated independently for every actuator-architecture pair.
+
+In the second stage, detailed in Section IV-B, we extract high-level performance metrics from the optimized populations. These metrics are formulated to be architecture-agnostic, though their computation depends on the specific kinematics of each mechanism. All metrics are normalized across the full set of candidates to ensure comparability, and aggregated into a scalar cost value. This enables a unified ranking of solutions across all actuator-architecture combinations.
+
+This separation is both computationally and conceptually motivated: the first stage (multi-objective optimization) is the most computationally expensive, while the scalar cost function in the second stage is fast to compute and can be freely reweighted without repeating the optimization. This decoupling also separates internal actuator effort (forces/velocities) from external task-level performance, enabling application-specific ranking of the same optimized populations.
+
+## A. Geometrical Parameters Optimization
+
+The proposed strategy is formally framed as a multiobjective optimization problem, which seeks to identify the elements π within a feasible set Π that achieve the best possible compromise in minimizing a set of objective functions:
+
+<!-- formula-not-decoded -->
+
+The set of all Pareto optimal solutions, denoted Π ⋆ , defines the Pareto front . It represents the set of trade-off solutions among conflicting objectives, where any improvement results in the deterioration of at least one objective.
+
+In our case, the elements π of the search space consist of vectors gathering the geometric parameters of the mechanism, which uniquely identify its morphology:
+
+<!-- formula-not-decoded -->
+
+where γ i and δ i are the parameterization variables introduced in Sec. III-C. The feasible set Π is manually defined by constraints on peak actuators ratings, hardware and physical limits, and collision avoidance. Π also takes into account the desired operational region Ω , defined as the domain of foot orientations that the mechanism must cover.
+
+The objectives of our optimization are to minimize both the peak actuator force f 1 ( π ) , and the peak actuator velocity f 2 ( π ) , evaluated over a set of reference trajectory tasks:
+
+<!-- formula-not-decoded -->
+
+where K denotes the set containing the indices of the reference tasks, and T k represents the time horizon over which the trajectory k is defined. Reference trajectory tasks are expressed as time series of joint position q ( t ) , velocity ˙ q ( t ) , and torque τ ( t ) , derived from simulation or experimental data.
+
+Each element π is evaluated by computing the actuator performances based on closed-form IK (Sec. III) and Jacobianbased kinematic analysis for each reference task. Performance metrics such as peak force/torque and velocity demands are extracted from this analysis. Feasibility across the entire operational region is verified through geometric constraints: for SPU configurations, actuator stroke limits are enforced, while RSU configurations are parameterized to ensure the existence of a valid inverse kinematic solution.
+
+The multi-objective optimization outputs a Pareto front Π ⋆ , which necessitates a subsequent ranking based on higher-level criteria tailored to the final application.
+
+## B. Scalar Cost Function for Comparative Evaluation
+
+To identify the most promising ankle designs across both SPU and RSU architectures, we introduce a cost function that enables unified post-ranking of the Pareto results. This function aggregates multiple performance metrics into a single scalar cost ξ , facilitating direct comparison and final selection.
+
+We shift focus from the internal actuated joints of the mechanism (prismatic or revolute) to the external performance at the ankle joints (roll and pitch), which are directly relevant to the robot's motion tasks. In this context, a set of high-level performance metrics is introduced to evaluate each candidate ankle based on its ability to (i) transmit speed and torque effectively to the ankle joints, (ii) exhibit favorable backdrivability and manipulability characteristics, and (iii) maintain a mechanically compact, lightweight, and high-CoM configuration.
+
+1) Performance Metrics: Each ankle configuration is evaluated according to seven key metrics:
+
+- i. Speed [rad/s]: roll and pitch angular velocities at the ankle universal joint U 0 resulting from the actuators operating at their nominal linear/angular speed.
+- ii. Torque [Nm]: roll and pitch torques available at the ankle joint U 0 when actuators operate at nominal torque/force.
+- iii. Backdriving Torque [Nm]: roll and pitch torques required at the ankle joint U 0 to overcome static friction at the actuators (using manufacturer-specified data).
+- iv. Manipulability Ratio [-]: as defined in (1).
+- v. Compactness [mm]: minimum radius of a vertical cylinder enclosing all mechanism points in the neutral configuration ( φ = ϑ = 0 ).
+- vi. Actuation Mass [kg]: total mass of the actuator pair (RSU includes estimated crank+rod mass).
+- vii. CoM Height [mm]: vertical distance from ground to the actuators' CoM, computed for φ = ϑ = 0 using CAD models, accounting for additional linkage mass in RSU.
+- 2) Region-Based Weighting: Metrics exhibiting variability across the operational region (i-iv) are aggregated using a weighted average and variance over a grid of foot orientations. To this end, we define two nested rectangular regions:
+- a core region , which fully encloses the union of all task trajectories and assigns a uniform weight w = 1 ;
+- an extended region , defined as the remainder of the operational region used during optimization, where w smoothly decays to zero via a raised cosine taper.
+
+This formulation allows for gradual degradation outside the core region, while still penalizing excessive variance or poor performance in regions more critical to the task set.
+
+Each metric in this category is characterized by both a weighted average µ and a corresponding variance σ 2 :
+
+<!-- formula-not-decoded -->
+
+where m k denotes the metric value at the k -th grid point and w k is the corresponding weight.
+
+3) Cost Function Definition: Each performance metric is first normalized to the [0 , 1] range using min-max scaling, computed over the entire population of candidates across all actuators. Let m j denote the raw value of the j -th metric for a given individual, and let m j, min and m j, max be the minimum and maximum values of that metric over the full candidate set. The normalized value ˜ m j is then defined as:
+
+<!-- formula-not-decoded -->
+
+ensuring a common scaling across all mechanism-actuator combinations, making the final scores directly comparable.
+
+The total cost ξ is computed as a weighted sum:
+
+<!-- formula-not-decoded -->
+
+The solution with the lowest ξ is deemed most suitable according to the specified performance priorities.
+
+Weights η j can be tuned depending on application-specific preferences (e.g., prioritize backdrivability or compactness).
+
+## V. RESULTS
+
+We first validate the RSU parameterization, then we test the evaluation framework, and finally, we compare the proposed design with an engineered RSU and a serial design.
+
+## A. Validation of the RSU Reparameterization
+
+In Fig. 4, a series of tests is presented to validate the correctness of the proposed approach. Given a set of parameters for the mechanism and a desired operational region (which is progressively varied in the figure from [ -15 ◦ , 15 ◦ ] × [ -15 ◦ , 15 ◦ ] to [ -150 ◦ , 150 ◦ ] × [ -150 ◦ , 150 ◦ ] ), it is verified that this region remains entirely within the area where IK is solvable. The operational region touches the singularity curves because values approaching zero were used for γ i and δ i , placing the system in limiting conditions.
+
+## B. Mechanisms Evaluation Framework Use-case
+
+The design framework presented in Section III is implemented in Grasshopper and Python. The multi-objective optimization problem is solved with the NSGA-II algorithm [25] using Tunny plugin [26]. The framework is applied to evaluate the upgrade of the serial ankle of a humanoid robot into parallel architectures capable of executing a broader set of motion tasks. The desired tasks are defined by a mix of experimental and simulated data, including: (i) a dynamic walking trajectory obtained from experiments; (ii) simulated walking on a ramp with 20% inclination; and (iii) simulated walking up and down a 20 cm step (depicted in Fig.5). The union of the ankle roll and pitch trajectories across these tasks led to the definition of a required operational region for the new ankle, set to [ -35 ◦ , 35 ◦ ] in roll and [ -70 ◦ , 30 ◦ ] in pitch. A more compact core region , defined as [ -17 . 5 ◦ , 17 . 5 ◦ ] in roll and [ -60 ◦ , 20 ◦ ] in pitch, was used to guide the regionbased weighting introduced in Sec. IV-B - depicted in Fig. 6.
+
+In our study, we chose to design the mechanism using commercial actuators. To estimate the minimum mechanical power required to perform the target tasks, we conducted a preliminary exploration of the design space through multiobjective optimizations. This process enabled us to assess
+
+<!-- image -->
+
+Fig. 4: RSU Reparameterization. The red region is the desired operational region, the gray region is the configuration space of the mechanism (roll on the x -axis, pitch on the y -axis). The curves represent the configurations where the crank and the rod are aligned (leg 1 in blue, leg 2 in purple). The white region denotes configurations for which the IK problem admits no solution, i.e., the mechanism cannot form a closed kinematic chain. The red region is always contained within the gray region. The parameters used for this analysis are: W a 1 = [ -86 , 40 , 235] ⊤ mm, W a 2 = [ -86 , -40 , 235] ⊤ mm, F b 1 = [ -34 , 36 , 36] ⊤ mm, F b 2 = [ -34 , -36 , 36] ⊤ mm, ψ 1 = -90 ◦ , ψ 2 = 90 ◦ , γ 1 = γ 2 = 0 . 001 , δ 1 = δ 2 = 0 . 001 .
+
+Fig. 5: Reference task example. The robot executes a step-down maneuver generated via trajectory optimization.
+
+<!-- image -->
+
+Fig. 6: Raised cosine tapered weight map. Red dots mark the foot configurations observed during the simulated and experimental tasks.
+
+<!-- image -->
+
+the power demands associated with different design configurations and informed the selection of suitable commercial actuators, specifically the linear actuator Wittenstein AL32 (ball screw, 2mm lead, 160mm stroke) for the SPU, and the rotary actuators Maxon HEJ 70-48-50, MyActuator RMD-X6P20-60, and Synapticon ACTILINK JD 10 for the RSU. The rotary actuators feature low-reduction planetary gearboxes (ratios 9:1-19:1), selected to promote high backdrivability.
+
+For each actuator, a refined design space Π is defined by introducing geometric constraints to ensure collisionfree integration. The multi-objective optimization problem described in (10) is solved, resulting in a Pareto front see Fig.7. For each solution on the Pareto front, a scalar cost ξ is computed according to (11), using uniformly distributed weights η j across the seven performance metrics. The resulting cost values are summarized in Fig. 8, grouped by actuator family. The plot reveals a consistent performance advantage for solutions involving the Synapticon actuator, with lower average cost and tighter variance.
+
+To gain further insight into the structure of the cost metric,
+
+<!-- image -->
+
+ACTUATOR\_TORQUE [Nm]
+
+Fig. 7: Output of the multi-objective optimization problem with Synapticon actuators and RSU mechanism.
+
+Fig. 8: Cost distribution ξ of the Pareto fronts for each actuator. Arrows indicate the performance of the engineered RSU mechanism, while the dashed line represents the performance of the original serial architecture.
+
+<!-- image -->
+
+we selected the best SPU and RSU designs and visualized their performance breakdown across all seven metrics. As shown in Fig. 9, the RSU candidate outperforms the SPU counterpart across most metrics. The radial width of the bands instead reveals that the SPU design exhibits lower performance variability across the operational region. Despite this trade-off, the RSU remains the more favorable solution due to its overall superior capabilities.
+
+## C. Validation of the scalar cost function approach
+
+We validated our approach against a conventionally engineered RSU (Fig. 1), designed via iterative CAD refinement to ensure coverage of the operational region, avoid collisions, and meet joint torque/speed requirements. While carefully constructed, this process lacks global optimality guarantees.
+
+Given the achieved geometry, we paired it with each rotary actuator used in the RSU study, yielding three additional candidates. Their total costs ξ are shown as arrows in Fig. 8. In all cases, the optimized populations include solutions
+
+Fig. 9: Comparison of the best SPU and RSU candidates. The solid line is the average value µ , while the shaded area represents the standard deviation σ over the evaluated range of motion. Values along the seven axes are individually min-max normalized for readability.
+
+<!-- image -->
+
+with strictly lower cost, confirming the advantage of our automated pipeline.
+
+## D. Comparison with the original serial architecture
+
+To assess the improvement over the studied existing ankle, we computed the total cost ξ of its current serial architecture, shown as a dashed line in Fig. 8. This not only validates nearly all optimized designs, but also demonstrates that our method applies to serial mechanisms as well. In this case, the regionbased weighting from Section IV-B is unnecessary, as serial architectures exhibit configuration-independent performance.
+
+## VI. CONCLUSIONS
+
+This paper presented a unified framework for the design and evaluation of parallel ankle mechanisms in humanoid robots, enabling informed, quantitative comparisons across architectures and actuators. The pipeline integrates closed-form inverse kinematics, a novel RSU reparameterization that guarantees workspace feasibility, task-informed multi-objective optimization, and a scalar cost function for structured evaluation.
+
+We applied the framework to two widely adopted architectures-SPU and RSU-modeled from both topological and geometrical perspectives. In a realistic redesign scenario, the optimized RSU reduced the scalar cost by 41% over the original serial design and by 14% over a conventionally engineered RSU, demonstrating the effectiveness of the proposed approach.
+
+Future work will address collision checking over the full operational region and embedding the cost function directly into the optimization loop for performance-guided search.
+
+## REFERENCES
+
+- [1] D.-Y. Kim, S.-H. Yun, J.-K. Lee, J. Yoon, D. Nam, C.-Y. Maeng, and Y.-J. Kim, 'Hyperleg: Biomechanics-inspired high-dof leg and toe mechanism for highly dynamic motions,' in 2024 IEEE International Conference on Robotics and Automation (ICRA) . IEEE, 2024, pp. 2456-2462.
+- [2] Y. Choi, D. Kim, and B.-J. You, 'On the walking control for humanoid robot based on the kinematic resolution of com jacobian with embedded motion,' in Proceedings 2006 IEEE International Conference on Robotics and Automation, 2006. ICRA 2006. , 2006, pp. 2655-2660.
+- [3] K. G. Gim and J. Kim, 'Implementation of a large-scale biped robot using serial-parallel hybrid leg mechanism,' in 2022 19th International Conference on Ubiquitous Robots (UR) . IEEE, 2022, pp. 115-121.
+- [4] C. Zhou and N. Tsagarakis, 'On the comprehensive kinematics analysis of a humanoid parallel ankle mechanism,' Journal of Mechanisms and Robotics , vol. 10, no. 5, p. 051015, 2018.
+- [5] S. Alfayad, F. B. Ouezdou, and F. Namoun, 'New three dof ankle mechanism for humanoid robotic application: Modeling, design and realization,' in 2009 IEEE/RSJ International Conference on Intelligent Robots and Systems . IEEE, 2009, pp. 4969-4976.
+- [6] S. Lohmeier, T. Buschmann, and H. Ulbrich, 'Humanoid robot lola,' in 2009 IEEE International Conference on Robotics and Automation . IEEE, 2009, pp. 775-780.
+- [7] A. J. Fuge, C. W. Herron, B. C. Beiter, B. Kalita, and A. Leonessa, 'Design, development, and analysis of the lower body of next-generation 3d-printed humanoid research platform: Pandora,' Robotica , vol. 41, no. 7, pp. 2177-2206, 2023.
+- [8] A. Roig, S. K. Kothakota, N. Miguel, P. Fernbach, E. M. Hoffman, and L. Marchionni, 'On the hardware design and control architecture of the humanoid robot kangaroo,' in 6th workshop on legged robots during the international conference on robotics and automation (ICRA 2022) , 2022.
+- [9] N. Perera, S. Yu, D. Marew, M. Tang, K. Suzuki, A. McCormack, S. Zhu, Y.-J. Kim, and D. Kim, 'Staccatoe: A single-leg robot that mimics the human leg and toe,' in 2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) . IEEE, 2024, pp. 9058-9065.
+- [10] Y.-H. Shin, S. Hong, S. Woo, J. Choe, H. Son, G. Kim, J.-H. Kim, K. Lee, J. Hwangbo, and H.-W. Park, 'Design of kaist hound, a quadruped robot platform for fast and efficient locomotion with mixedinteger nonlinear optimization of a gear train,' in 2022 International Conference on Robotics and Automation (ICRA) . IEEE, 2022, pp. 6614-6620.
+- [11] G. Wu, S. Caro, S. Bai, and J. Kepler, 'Dynamic modeling and design optimization of a 3-dof spherical parallel manipulator,' Robotics and Autonomous Systems , vol. 62, no. 10, pp. 1377-1386, 2014.
+- [12] C. Yang, W. Ye, and Q. Li, 'Review of the performance optimization of parallel manipulators,' Mechanism and Machine Theory , vol. 170, p. 104725, 2022.
+- [13] C. Semini, V. Barasuol, J. Goldsmith, M. Frigerio, M. Focchi, Y. Gao, and D. G. Caldwell, 'Design of the hydraulically actuated, torquecontrolled quadruped robot hyq2max,' IEEE/Asme Transactions on Mechatronics , vol. 22, no. 2, pp. 635-646, 2016.
+- [14] D. V. Ivolga, I. I. Borisov, K. V. Nasonov, and S. A. Kolyubin, 'Computational design of closed-chain linkages: Respawn algorithm for generative design,' in 2023 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) . IEEE, 2023, pp. 481-486.
+- [15] F. Pierrot, V. Nabat, O. Company, S. Krut, and P. Poignet, 'Optimal design of a 4-dof parallel manipulator: From academia to industry,' IEEE Transactions on Robotics , vol. 25, no. 2, pp. 213-224, 2009.
+- [16] K. Hashimoto, 'Mechanics of humanoid robot,' Advanced Robotics , vol. 34, no. 21-22, pp. 1390-1397, 2020.
+- [17] G. Ficht and S. Behnke, 'Bipedal humanoid hardware design: A technology review,' Current Robotics Reports , vol. 2, pp. 201-210, 2021.
+- [18] Z. Huang, Q. Li, and H. Ding, Theory of parallel mechanisms . Springer Science &amp; Business Media, 2012, vol. 6.
+- [19] K. Yamane, Closed-Loop Dynamics . Berlin, Heidelberg: Springer Berlin Heidelberg, 2019, pp. 1-6.
+- [20] X.-J. Liu and J. Wang, 'Parallel kinematics,' Springer Tracts in Mechanical Engineering , 2014.
+- [21] K. M. Lynch and F. C. Park, Modern robotics . Cambridge University Press, 2017.
+- [22] C. Gosselin, J. Angeles et al. , 'Singularity analysis of closed-loop kinematic chains.' IEEE transactions on robotics and automation , vol. 6, no. 3, pp. 281-290, 1990.
+- [23] T. Yoshikawa, 'Manipulability of robotic mechanisms,' The international journal of Robotics Research , vol. 4, no. 2, pp. 3-9, 1985.
+- [24] G. Gogu, 'Chebychev-gr¨ ubler-kutzbach's criterion for mobility calculation of multi-loop mechanisms revisited via theory of linear transformations,' European Journal of Mechanics-A/Solids , vol. 24, no. 3, pp. 427-441, 2005.
+- [25] K. Deb, A. Pratap, S. Agarwal, and T. Meyarivan, 'A fast and elitist multiobjective genetic algorithm: Nsga-ii,' IEEE Transactions on Evolutionary Computation , vol. 6, no. 2, pp. 182-197, 2002.
+- [26] H. Natsume, 'Tunny, The Grasshopper optimization tool,' Jun. 2024. [Online]. Available: https://github.com/hrntsm/Tunny

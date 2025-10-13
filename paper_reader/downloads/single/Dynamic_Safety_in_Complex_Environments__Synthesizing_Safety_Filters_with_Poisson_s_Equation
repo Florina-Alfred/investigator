@@ -1,0 +1,680 @@
+## Dynamic Safety in Complex Environments: Synthesizing Safety Filters with Poisson's Equation
+
+Gilbert Bahati, Ryan M. Bena, and Aaron D. Ames. Department of Mechanical and Civil Engineering,
+
+California Institute of Technology, Pasadena, CA, USA. E-mails: { gbahati, ryanbena, ames } @caltech.edu
+
+Abstract -Synthesizing safe sets for robotic systems operating in complex and dynamically changing environments is a challenging problem. Solving this problem can enable the construction of safety filters that guarantee safe control actionsmost notably by employing Control Barrier Functions (CBFs). This paper presents an algorithm for generating safe sets from perception data by leveraging elliptic partial differential equations, specifically Poisson's equation. Given a local occupancy map, we solve Poisson's equation subject to Dirichlet boundary conditions, with a novel forcing function. Specifically, we design a smooth guidance vector field, which encodes gradient information required for safety. The result is a variational problem for which the unique minimizer-a safety function -characterizes the safe set. After establishing our theoretical result, we illustrate how safety functions can be used in CBF-based safety filtering. The real-time utility of our synthesis method is highlighted through hardware demonstrations on quadruped and humanoid robots navigating dynamically changing obstacle-filled environments.
+
+## I. INTRODUCTION
+
+Deploying robotic systems in real-world environments autonomously requires that they operate in complex, dynamic environments while avoiding collisions with multiple objects of arbitrary geometry. Achieving this level of dynamic safety necessitates a quantifiable description of the safety requirement, i.e. a functional representation of the environment via a safety constraint. Additionally, this representation must be integrated with the dynamics of the system to produce safe inputs, i.e., inputs that ensure satisfaction of the safety requirements. To achieve this, numerous methods for enforcing dynamic safety constraints have been investigated, including Hamilton-Jacobi reachability [1-3], Model Predictive Control [4, 5], Artificial Potential Fields (APFs) [6, 7], and Control Barrier Functions (CBFs) [8]. This paper seeks to fuse the synthesis of safety constraints with controllers that yield safe behaviors, coupling functional representations of dynamic environments with the generation of safe controllers.
+
+Safety constraints are typically synthesized using heuristic approaches for simple environments, or through general methods that are non-constructive. While heuristic methods work for environments with simple geometries [9, 10], they struggle when generalized to more complex environments. Alternatively, for more complex geometries, signed distance functions (SDFs) [11-13] have been proposed as a method for generating safety descriptors in the context of collision avoidance. However, SDFs possess gradient discontinuities
+
+Fig. 1: Safe set synthesis from perception data via Poisson's equation. Hardware experimental footage: https://youtu.be/fBRdkAJGixI.
+
+<!-- image -->
+
+which present challenges in synthesizing safe controllers. Therefore, the synthesis of safety constraints is a challenging problem in its own right-made even more challenging by the need to couple safety constraints with system dynamics.
+
+Given a description of the environment in the context of a goal location subject to obstacles, a popular method for enforcing safe behavior is the APF. Originally introduced in [6], APFs are a heuristic technique for achieving dynamic safety by encoding 'repulsive' gradients on obstacle surfaces and 'attractive' gradients to a desired goal. This coupling between the dynamics of the system (via gradients) and specifications (via attractive and repulsive potentials) allows for the problem to be framed as one of constructing an APF. One approach to constructing APFs is to frame them as solutions to elliptic partial differential equations (PDEs) [14, 15]. This has been employed in the context of navigation and path planning [16-18] and is useful for complex geometry [19]. Despite the success of APFs, this method assumes single integrator dynamics, i.e., a kinematic model. Additionally, APFs couple goal-reaching (stability) and collision avoidance (safety), limiting their ability to provide a description of safety that is independent of control objectives.
+
+A decoupled approach to synthesizing safe controllers for general nonlinear systems is through CBFs [8, 20]. In this framework, safety constraints yield a safe set defined as the superlevel set of a function, and this function is a CBF if there exists inputs that render the safe set forward invariant. CBFs have been shown to generalize APFs [7], in that they decouple safety from stability, and apply to general nonlinear systems. Specifically, given a CBF, one can synthesize a safety filter [21, 22] framed as a quadratic program with the stability objectives as a cost and safety objective as a constraint. Methods such as [23-25] offer a systematic approach for constructing CBF-based safety filters for robotic systems via reduced-order models with real-time realizations on hardware. However, for collision avoidance in complex environments, the constructive design of functions encoding safety objectives, i.e., the synthesis of safe sets and the corresponding CBFs, remains a challenging task.
+
+In this paper, we show that elliptic PDEs can be used to synthesize safety functions -functional representations of complex environments that characterize safety. We demonstrate that the process of constructing safe sets can be formulated as solving a Dirichlet problem for Poisson's equation. In particular, given an occupancy map, we solve Poisson's equation subject to Dirichlet boundary conditions, where the solution, a safety function, characterizes a safe set, while the boundary conditions encode desired level-set values on obstacle surfaces. We propose several methods for constructing the forcing function within Poisson's equation, including an average flux method and a guidance field method [26] that provides additional degrees of freedom for defining safety. The solution has desirable differentiability (i.e., regularity) properties, which are critical in enabling their use in the synthesis of safety filters.
+
+The key observation of this paper is that safety functions obtained from Poisson's equation can be used to synthesize CBFs and, therefore, safety filters. The main contributions are threefold: (1) we present a constructive way of generating safe sets for complex environments from perception data via Poisson's equation, (2) we illustrate and prove how the resulting safety functions can be used to synthesize CBF-based safety filters, and (3) we demonstrate the real-time efficiency of our approach with hardware experiments on quadruped and humanoid robots in static and dynamically changing environments. Importantly, we show that safety function synthesis (1) can be done in real-time via perception data to enable safe behaviors (2) on highly dynamic robotic systems (3).
+
+## Notation:
+
+- A continuous function γ : R → R is an extended class K , K e ∞ , ( γ ∈ K e ∞ ) if γ is monotonically increasing, γ (0) = 0 , lim s →∞ γ ( s ) = ∞ , and lim s →-∞ γ ( s ) = -∞ .
+- For a function w : R n → R where x ↦→ w ( x ) = w ( x 1 , · · · , x n ) , let Dw denote the gradient and D 2 w denote the Hessian. More generally, for k ∈ N 0 , D k w is the collection of all partial derivatives of order k . Given a multi-index ξ = ( ξ 1 , · · · , ξ n ) ∈ N n 0 with | ξ | = k :
+
+<!-- formula-not-decoded -->
+
+- Ω is an open, bounded and connected set with smooth boundary ∂ Ω such that Ω = Ω ∪ ∂ Ω is the closure of Ω .
+- C k (Ω) is the set of functions: { w : Ω → R ∣ ∣ w is k -times continuously differentiable } .
+- C k (Ω) = { w ∈ C k (Ω) | D ξ w is uniformly continuous on bounded subsets of Ω for all | ξ | ≤ k } , that is, D ξ w continuously extends to Ω .
+- C k (Ω; R ≥ 0 ) = { w : Ω → R ≥ 0 ∣ ∣ w is k -times continuously differentiable } with the similar respective definitions for C k (Ω; R &gt; 0 ) , C k (Ω; R ≤ 0 ) , C k (Ω; R &lt; 0 ) and vector or matrix-valued functions C k (Ω; R n ) , C k (Ω; R n × n ) .
+- C k,α (Ω) for 0 &lt; α &lt; 1 denotes H¨ older continuous function spaces: see Appendix A.
+
+## II. BACKGROUND: SAFETY-CRITICAL CONTROL
+
+This section reviews safety for nonlinear systems in the context of CBFs. We consider a nonlinear control-affine system:
+
+<!-- formula-not-decoded -->
+
+where x ∈ R n is the state and u ∈ R m is the control input. The function f : R n → R n denotes the drift dynamics and g : R n → R n × m is the actuation matrix, both assumed to be locally Lipschitz continuous. A locally Lipschitz continuous controller k : R n → R m yields the closed-loop system:
+
+<!-- formula-not-decoded -->
+
+Because the functions f , g , and k are locally Lipschitz continuous, (2) defines an ordinary differential equation such that for any initial condition x (0) = x 0 ∈ R n , there exists a unique continuously differentiable solution t ↦→ x ( t ) on the maximal time interval I max ( x 0 ) = [0 , t max ( x 0 )) [27].
+
+## A. Control Barrier Functions and Safety Filters
+
+The concept of safety can be formalized by requiring that all system trajectories t ↦→ x ( t ) remain within a set S ⊂ R n , characterized by the notion of forward invariance.
+
+Definition 1. (Forward Invariance) A set S is forward invariant with respect to (2) if for every initial condition x 0 ∈ S , the resulting trajectory t ↦→ x ( t ) ∈ S for all t ∈ I max ( x 0 ) .
+
+We consider a system safe with respect to a user-defined safe set S if S is forward invariant. In particular, we consider safe sets defined as the 0-superlevel set of a continuously differentiable function h S : R n → R :
+
+<!-- formula-not-decoded -->
+
+Forward invariance of such sets can be guaranteed by Nagumo's theorem [28], which requires the derivative of h S
+
+along the trajectories of the closed-loop system (2) to be nonnegative on the boundary of S , that is:
+
+<!-- formula-not-decoded -->
+
+̸
+
+for all x ∈ ∂ S . This ensures that on the set boundary ∂ S , the vector field of (2) points towards the interior of S or is tangent to ∂ S . The condition Dh S ( x ) = 0 when h S ( x ) = 0 is necessary to ensure the existence of a locally Lipschitz continuous controller k for the system (2) that satisfies (4). CBFs are a tool for synthesizing controllers and safety filters that enforce the safety of the system (1) on S .
+
+̸
+
+Definition 2. (Control Barrier Function (CBF) [8]) Let S ⊂ R n be the 0-superlevel set of a continuously differentiable function h S : R n → R satisfying Dh S ( x ) = 0 when h S ( x ) = 0 . The function h S is a Control Barrier Function (CBF) for (1) on S if there exists γ ∈ K e ∞ such that for all x ∈ R n :
+
+<!-- formula-not-decoded -->
+
+Given a CBF h S and γ , the set of feasible point-wise control values satisfying (5) is given by:
+
+<!-- formula-not-decoded -->
+
+such that any locally Lipschitz controller x ↦→ k ( x ) ∈ K CBF ( x ) enforces the forward invaraince of S [8], establishing the safety of (1) on S . Given a desired (potentially unsafe) nominal controller k nom : R n → R m , the following optimization-based controller filters k nom by minimally adjusting it to the nearest safe action:
+
+<!-- formula-not-decoded -->
+
+The next subsection discusses systems with properties that enable a systematic approach to constructing CBFs.
+
+## B. Outputs and Relative Degree
+
+In this paper, we focus on systems for which safety specifications are expressed using a set of desired outputs . To facilitate the construction of CBFs, we recall the notion of relative degree , which represents the layer of differentiation at which the control inputs affects the outputs.
+
+Definition 3 (Relative Degree r [29]) . A function y : R n → R p has relative degree r ∈ N for (1) if:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+Given an output y with relative degree r , we define a new set of partial coordinates:
+
+<!-- formula-not-decoded -->
+
+where y ( r ) = d r y d t r , leading to the following linear dynamics:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+where (11) is an input to (10). When y has relative degree r , the controller w = ˆ k ( ⃗ y ) designed for (10) can be transferred back to the controller for (1) as follows 1 :
+
+<!-- formula-not-decoded -->
+
+This partial coordinate transformation is a full coordinate transformation if pr = n . The output dynamics (10) are a chain of integrators, allowing for the use of techniques such as [24, 25] and [30, 31] to construct CBFs, including for classes of systems with outputs of nonuniform relative degree.
+
+Given an output y , the success of the techniques in [24, 25, 30, 31] rely on knowledge of the function y ↦→ h ( y ) encoding a safety specification for a desired safe set C . For simple environments, one can often leverage analytical expressions to characterize the safe set with a smooth function h ; however, for more complex environments, such as those with multiple obstacles of aribtrary geometry, obtaining a single smooth h is challenging without introducing excess conservatism [10]. In what follows, we demonstrate how Poisson's equation can be leveraged to overcome these challenges and generate a single smooth function h for environments with arbitrary geometries.
+
+## III. SAFE SET SYNTHESIS VIA POISSON'S EQUATION
+
+In this work, we consider systems with spatial safety specifications, with outputs given by:
+
+<!-- formula-not-decoded -->
+
+Our primary focus is the construction of safe sets purely in spatial coordinates (13); therefore, our construction is geometric and independent of system dynamics (1). Given occupancy data in the coordinates (13), we consider an open domain Ω ⊂ R 3 representing unoccupied regions, with its boundary ∂ Ω corresponding to obstacle surfaces. Our goal is to design a safe set defined as the 0 -superlevel set of a safety function .
+
+̸
+
+Definition 4. (Safety Function) Let y = ( x, y, z ) ∈ R 3 represent three-dimensional spatial coordinates. We call a function h : Ω ⊂ R 3 → R a safety function of order k on Ω if h is k -times differentiable, Dh ( y ) = 0 when h ( y ) = 0 and the 0-superlevel set of h defines a safe-set C satisfying:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+Specifically, let Ω ⊂ R 3 be an open, bounded and connected set with piecewise smooth boundary ∂ Ω . That is, we assume
+
+1 Condition (8) implies the right psuedo-inverse L g L r -1 f y ( x ) † exists.
+
+∂ Ω to be a finite union of closed, smooth obstacle surfaces:
+
+<!-- formula-not-decoded -->
+
+where each Γ i is an open, bounded and connected set defining an obstacle interior, and ∂ Γ i is its smooth boundary. The term n obs denotes the total number of obstacles, i.e., isolated occupied regions, in the environment.
+
+We propose a method for synthesizing safe sets from environmental boundary data by solving a boundary value problem for Poisson's equation, a second-order linear elliptic partial differential equation (PDE). In particular, we consider safe sets characterized by safety functions which satisfy Poisson's equation subject to Dirichlet boundary conditions:
+
+<!-- formula-not-decoded -->
+
+where ∆ = ∂ 2 ∂x 2 + ∂ 2 ∂y 2 + ∂ 2 ∂z 2 is the Laplacian and f : Ω → R is a given forcing function. From classical elliptic regularity stated in Theorem 4 in Appendix A, a sufficient condition for (16) to admit a twice continuously differentiable solution, h ∈ C 2 (Ω) , is that f is H¨ older continuous, that is, f ∈ C k,α (Ω) for some k ∈ N 0 and 0 &lt; α &lt; 1 . Furthermore, a smooth forcing function, f ∈ C ∞ (Ω) , implies a smooth solution, h ∈ C ∞ (Ω) , to (16). To assist the reader, we review key concepts from elliptic PDEs, including H¨ older continuity, in Appendix A.
+
+From the weak minimum principle in Theorem 3, a function h ∈ C 2 (Ω) attains its minimum on ∂ Ω if it is superharmonic, i.e., ∆ h ( y ) ≤ 0 , in the interior Ω . To ensure h is not a constant function, a sufficient condition is that the strict inequality ∆ h ( y ) &lt; 0 holds in Ω . Then, from Hopf's lemma, (Lemma 2), the outward directional derivatives on the boundary satisfy:
+
+<!-- formula-not-decoded -->
+
+A function h satisfying ∆ h ( y ) &lt; 0 in Ω can be obtained by solving (16) with a negative forcing function, i.e., f ( y ) &lt; 0 for all y ∈ Ω . In particular, if f : Ω → R &lt; 0 is H¨ older continuous on Ω , we obtain the following theorem.
+
+Theorem 1. (Poisson Safety Function) Let Ω be an open, bounded and connected set with piecewise smooth boundary ∂ Ω . Suppose f ∈ C k,α (Ω; R &lt; 0 ) for some k ∈ N 0 and α ∈ (0 , 1) . Then the solution h : Ω → R to the Dirichlet problem for Poisson's equation (16) is a safety function of order 2+ k .
+
+̸
+
+Proof: From the minimum principle and classical elliptic regularity presented in Theorem 3 and 4 respectively, we have that f ∈ C k,α (Ω; R &lt; 0 ) implies that h ∈ C 2+ k,α (Ω; R ≥ 0 ) , which defines a compact 0-superlevel set satisfying (14) with C = Ω , ∂ C = ∂ Ω and int( C ) = Ω . Given that the boundary is piecewise smooth as in (15), the interior sphere property i.e., Def. 6 in Appendix A holds. Thus from Hopf's lemma, we have that (17) holds, implying Dh ( y ) = 0 when h ( y ) = 0 . Thus, h is a safety function of order 2 + k as in Def. 4.
+
+The above theorem provides conditions to ensure a solution h to (16) characterizes safe regions. Unsafe regions are typically defined by regions where h ( y ) &lt; 0 . By letting Γ i (i.e., occupied region corresponding to the interior of each obstacle) define an unsafe region, one can verify from the weak maximum principle in Theorem 3, that solving Poisson's equation (16) on Γ i with f ∈ C k,α (Γ i ; R &gt; 0 ) ensures the solution h is subharmonic in each Γ i , resulting in h ( y ) &lt; 0 for all y ∈ Γ i . Combining this with Theorem 1, the safety function characterizes both safe and unsafe regions.
+
+Remark 1. (Smooth Boundary) By assuming a smooth boundary ∂ Ω in (15), where each ∂ Γ i is smooth for all i , any sharp corners on obstacles are assumed to be smoothed out. This ensures that the regularity properties (see Appendix A) in the interior of the domains Γ i and Ω can be extended to the boundaries. Our results still hold for non-smooth boundaries, provided that they satisfy the interior sphere property in Def. 6 with the appropriate (possibly non-classical) definition of the boundary derivative [32-36]. We present Theorem 1 for smooth boundaries to avoid technical details beyond the scope of this paper, and (as will be discussed later) due to the observed benefits in the performance of synthesized safetyfilters near smooth corners.
+
+In summary, the differentiability (i.e., regularity) of f in (16) ensures that the solution h to (16) inherits the desired regularity properties which provide the necessary differentiability guarantees for h . Furthermore, the negativity of f in Ω guarantees that h characterizes the safe set (14) and satisfies (17), by enforcing the superharmoniticity of h in Ω . Thus, h is a safety function on Ω with guarantees of differentiability. The next section provides methods of constructing forcing functions that satisfy these conditions, facilitating the practical implementation of the resulting safety functions.
+
+## IV. FORCING FUNCTION CONSTRUCTION
+
+In this section, we present methods of designing forcing functions that ensure the solution to the boundary value problem for Poisson's equation (16) is a safety function.
+
+## A. Direct Assignment
+
+1) Distance Metric : An approach to constructing a H¨ older continuous forcing function f ∈ C 0 ,α (Ω; R &lt; 0 ) for α ∈ (0 , 1) is based on the distance to obstacles:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+for all y ∈ Ω . One can verify that (19) is H¨ older continuous on Ω by leveraging [37, Proposition 1.1.2]. Following from Theorem 1, the forcing function (19) yields a safety function h ∈ C 2 ,α (Ω; R ≥ 0 ) that lacks orders of differentiability higher than 2. This limitation makes this choice of f unsuitable for control design for systems with outputs of relative degree r &gt; 1 as defined in Def. 3.
+
+<!-- image -->
+
+[m]
+
+[m]
+
+Fig. 2: [From left to right] Solutions to Poisson's equation (16) with the following forcing functions: [left] a H¨ older continuous function (19) with α = 0 . 1 ; [mid-left] an average flux forcing function with ¯ b = -1 in (23); [mid-right] a smooth forcing function (29) constructed using the guidance field (26) under a uniform boundary flux b ( y ) = -1 for all y ∈ ∂ Ω ; and [right] the same forcing function with a non-uniform boundary flux b : ∂ Ω → R &lt; 0 , allowing different flux values across regions of the boundary, corresponding to different obstacles.
+
+2) Constant Value : An alternative, straightforward choice of a forcing function is a constant negative value f ∈ R &lt; 0 , which guarantees that h ∈ C ∞ (Ω; R ≥ 0 ) . However, this approach indirectly assigns arbitrary flux values (encoding the magnitude of 'repulsive' gradients) on ∂ Ω without precise knowledge of the resulting flux magnitude. The notion of flux is detailed in Appendix A. While this approach yields the desired safe set properties (14), it may be beneficial to relate the flux on ∂ Ω to geometric properties of the domain. One way to achieve this is by designing a forcing function that enforces a desired average flux on ∂ Ω . To do this, we leverage Gauss's divergence theorem presented in Appendix A, which dictates that all forcing functions must satisfy 2 :
+
+<!-- formula-not-decoded -->
+
+where d V := d x d y d z denotes the volume element of Ω and d A is the surface element of ∂ Ω . Let ¯ b ∈ R &lt; 0 denote the desired average flux on ∂ Ω , defined as:
+
+<!-- formula-not-decoded -->
+
+where Area( ∂ Ω) denotes the surface area of ∂ Ω , representing the surface area of all obstacles. Assuming f ∈ R , we define:
+
+<!-- formula-not-decoded -->
+
+where Vol(Ω) denotes the volume of the domain Ω . It then follows that the forcing function (23) is a constant negative value that yields a smooth solution, h ∈ C ∞ (Ω; R ≥ 0 ) , to (16) with the average flux ¯ b on ∂ Ω . Fig 2 shows the resulting Poisson safety functions leveraging the above methods.
+
+2 Note ∂ Ω is the 0 -level set, so Dh is normal (i.e., perpendicular) to ∂ Ω .
+
+Fig. 3: Smooth guidance field generation via Laplace's equation (26). [left] Boundary conditions ⃗ v = b ˆ n encoding the desired negative flux on obstacle surfaces; and [right] solution to Laplace's equation for each component in ⃗ v = ( v x , v y ) .
+
+<!-- image -->
+
+## B. Indirect Assignment - Variational Approach
+
+Another approach of constructing a forcing function is by designing a guidance vector field ⃗ v : Ω → R 3 , which encodes the desired flux on ∂ Ω , and seeking a function h whose gradient approximates ⃗ v in Ω . Specifically, let h be the minimizer of the cost functional:
+
+<!-- formula-not-decoded -->
+
+among all functions h : Ω → R with prescribed boundary conditions h ( y ) = 0 on ∂ Ω . This infinite-dimensional minimization problem provides a solution h whose gradient is the least-squares approximation to the guidance field ⃗ v . A twice differentiable minimizer of (24), h ∈ C 2 (Ω) , satisfies the associated Euler-Lagrange equation, given by:
+
+<!-- formula-not-decoded -->
+
+where f ( y ) = ∇· ⃗ v ( y ) denotes the divergence of the guidance field, defining the forcing function. We provide a discussion on Euler-Lagrange equations and the fact that solutions to Poission's equation can be realized as unique minimizers of variational problems in Appendix A, specifically, Theorem 5.
+
+A smooth guidance field, ⃗ v ∈ C ∞ (Ω; R 3 ) , implies ∇· ⃗ v ∈ C ∞ (Ω) in (25), and following from Theorem 4, this leads to a smooth solution, h ∈ C ∞ (Ω) . We obtain a smooth guidance field by solving Laplace's equation-the homogenous version of Poisson's equation. Specifically, consider the vector field ⃗ v = ( v x , v y , v z ) : Ω → R 3 , with each component satisfying Laplace's equation subject to Dirichlet boundary conditions:
+
+<!-- formula-not-decoded -->
+
+for i ∈ { x, y, z } . The terms n x , n y , n z represent the components of the outward unit normal vector ˆ n = ( n x , n y , n z ) : ∂ Ω → R 3 such that ⃗ v ( y ) = b ( y )ˆ n ( y ) on ∂ Ω . The term b : ∂ Ω → R &lt; 0 prescribes the outward directional derivative encoding the desired boundary flux:
+
+<!-- formula-not-decoded -->
+
+Following from the mean value theorem, solutions to (26) are smooth [38], meaning ⃗ v belongs to the set of functions:
+
+<!-- formula-not-decoded -->
+
+Fig. 3 depicts an example a guidance field generated via (26).
+
+Due to the decoupled nature of its components, ⃗ v may not be conservative , meaning it may not correspond to the gradient of a scalar potential function [39, 40]. To address this, (25) ensures we find h ∈ C ∞ (Ω) whose gradient best approximates ⃗ v by using its divergence, ∇· ⃗ v , as the forcing function. The boundary flux error is given by Dh ( y ) · ˆ n ( y ) -b ( y ) on ∂ Ω . However, the condition ∇· ⃗ v ( y ) &lt; 0 may not necessarily hold for all y ∈ Ω , which is sufficient to guarantee h ( y ) &gt; 0 in Ω . To remedy this, we introduce the forcing function 3 :
+
+<!-- formula-not-decoded -->
+
+with β &gt; 0 . This defines a smooth, negative forcing function f ∈ C ∞ (Ω; R &lt; 0 ) , which yields a solution h ∈ C ∞ (Ω; R ≥ 0 ) to (16) as established in Theorem 1. It further follows from Theorem 5 that this solution is the unique minimizer of the variational problem (dropping dependency on y for brevity):
+
+<!-- formula-not-decoded -->
+
+Example safety functions generated with the approach are depicted in Fig. 2. Our next goal is to establish the forward invariance of the safe set C , characterized by the safety function h as in (14), for time-parameterized curves t ↦→ ⃗ y ( t ) describing the evolution of a dynamical system.
+
+3 Inspired by the softplus function, this preserves the smoothness and negativity of f , ensuring the solution to (16) remains superharmonic in Ω .
+
+## V. SAFETY-CRITICAL CONTROL VIA POISSON SAFETY FUNCTIONS
+
+In this section, we show that a safety function h constructed from Theorem 1 can be used to define a CBF. We establish that C can be rendered forward invariant for first-order systems while a subset of C can be rendered forward invariant for high-order systems. We focus on systems defined by integrator chains as (10), with the input appearing at the last layer-note that our method can be extended to classes of systems with outputs of nonuniform relative degree, such as those in [24, 25]. For the spatial outputs (13), we have p = 3 in (10). We begin by discussing forward invariance for first-order systems.
+
+## A. First Order Systems
+
+Consider the following system of relative degree r = 1 :
+
+<!-- formula-not-decoded -->
+
+where the state ⃗ y := y ∈ R 3 . The following proposition establishes the forward invariance of C with respect to (32).
+
+Proposition 1. (Forward Invariance for First-Order Systems) Let Ω ⊂ R 3 be an open, bounded and connected set with piecewise smooth boundary ∂ Ω . Consider the system (32) and a safe set C defined as the 0 -super level set of a function h : Ω → R . Suppose that h is the solution to (16) with f ∈ C 0 ,α (Ω; R &lt; 0 ) for some α ∈ (0 , 1) . Then given ⃗ y (0) = y 0 ∈ C , there exists a locally Lipschitz continuous controller w = k ( ⃗ y ) such that for any γ &gt; 0 :
+
+<!-- formula-not-decoded -->
+
+Thus, C is forward invariant and h is a CBF for (32) .
+
+̸
+
+Proof: From Theorem 1, we have that f ∈ C 0 ,α (Ω; R &lt; 0 ) implies that h ∈ C 2 ,α (Ω; R ≥ 0 ) defining a safe set C = Ω as described in (14). Furthermore, we have that Dh ( y ) = 0 when h ( ⃗ y ) = 0 , that is, when y ∈ ∂ Ω = ∂ C . Given the system (32) with initial condition ⃗ y (0) = ⃗ y 0 ∈ C , the following locally Lipschitz continuous controller [41, 42]:
+
+̸
+
+<!-- formula-not-decoded -->
+
+with σ &gt; 0 satisfies (33) for all ⃗ y ∈ C such that when h ( ⃗ y ) = 0 , we have k ( ⃗ y ) = 1 2 σ 1 2 Dh ( y ) ⊤ yielding ˙ h ( ⃗ y ) = 1 2 σ 1 2 ∥ Dh ( y ) ∥ 2 &gt; 0 . Thus, from Nagumo's theorem, the set C is a rendered forward invariant and h is a CBF for (32).
+
+## B. CBF Backstepping
+
+Given a safety function h satisfying Theorem 1, we now establish safety for high-order systems (10) of relative degree r ≥ 2 by leveraging finite-dimensional backstepping to construct a CBF [43]. CBF backstepping is a design technique that recursively constructs auxiliary controllers for each layer of the full-order system dynamics, providing a systematic approach to designing CBFs for linear systems modeled as integrator chains [24]. For convenience, we begin by considering systems of relative degree r = 2 . These results can be extended to relative degree r ∈ N , as demonstrated in Appendix B.
+
+Consider the state ⃗ y = ( y , ˙ y ) ∈ R 6 and dynamics:
+
+<!-- formula-not-decoded -->
+
+Specifically, let h ∈ C 2+ k,α (Ω) be the solution to (16) satisfying Theorem 1. Define the following function:
+
+<!-- formula-not-decoded -->
+
+with µ 1 &gt; 0 where k 1 ∈ C 2 ( R 3 × R × R 3 ; R 3 ) is an auxiliary controller satisfying:
+
+<!-- formula-not-decoded -->
+
+for all y ∈ C and some γ &gt; 0 such as (34). The 0-superlevel set of the function h B defines the shrunken set:
+
+<!-- formula-not-decoded -->
+
+Since h B ( y ) ≤ h ( y ) for all y ∈ C , we can ensure that all trajectories that start in C B also remain in C by rendering C B safe. This is possible because ⃗ y ∈ C B ∩ ∂ C implies that ˙ y = k 1 ( y , h ( y ) , Dh ( y )) and therefore, the condition (37) ensures that ˙ h ( y , ˙ y ) = Dh ( y ) · ˙ y &gt; 0 at this point ⃗ y . Taking the time derivative of (36) yields:
+
+<!-- formula-not-decoded -->
+
+where ˙ k 1 ( · ) = ∂ k 1 ∂ y ( · ) ˙ y := Φ 1 ( y , ˙ y , Dh ( y ) , D 2 h ( y )) with:
+
+<!-- formula-not-decoded -->
+
+To construct a locally Lipschitz continuous controller w = k ( ⃗ y ) that enforces safety, we require the second partial derivatives of h , denoted by the Hessian D 2 h to be Lipschitz continuous i.e., D 2 h ∈ C 0 , 1 (Ω; R 3 × 3 ) . The following lemma establishes conditions for this property to hold.
+
+Lemma 1. (Lipschitz Regularity of D r h ) Let r ∈ N and f ∈ C k,α (Ω) for some α ∈ (0 , 1) and k ∈ N 0 . If r ≤ k +1 , then the solution h ∈ C 2+ k,α (Ω) to (16) satisfies D r h ∈ C 0 , 1 (Ω; R 3 r ) .
+
+Proof: From Theorem 4, one can verify that the r -th partial derivatives D r h ∈ C 2+ k -r,α (Ω; R 3 r ) . For the case when r = k +1 , we have that C 1 ,α ⊂ C 0 , 1 . Thus, it follows that C 2+ k -r,α ⊂ C 0 , 1 for r ≤ k +1 , which implies that D r h is Lipschitz continuous on the set Ω .
+
+The above lemma relies on the inclusion of continuously differentiable functions in Lipschitz continuous function spaces [44]. Leveraging the above result, it follows from [43, Theorem 4] that there exists a locally Lipschitz continuous controller that renders C B forward invariant. Specifically, if ⃗ y 0 = ( y 0 , ˙ y 0 ) ∈ C B , then ⃗ y ( t ) ∈ C B for all t ∈ I max ( ⃗ y 0 ) . Thus, h B is a CBF for (35).
+
+Remark 2. (H¨ older Regularity and Control Design) The results in [24, 43] rely on the assumption that h is smooth, i.e., h ∈ C ∞ (Ω) , which holds if f ∈ C ∞ (Ω) as established in Theorem 4. In this paper, we relax this assumption and only require H¨ older continuity, h ∈ C 2+ k,α (Ω) , therefore, allowing for a wider range of methods for constructing forcing functions that may not be smooth but are instead H¨ older continuous, f ∈ C k,α (Ω) . This relaxed regularity assumption motivates the use of Lemma 1 to guarantee the existence of a Lipschitz continuous controller on Ω .
+
+## VI. DEMONSTRATIONS
+
+To demonstrate the proposed algorithm's effectiveness in synthesizing safety filters for autonomous systems in complex environments, we perform numerical simulations and hardware experiments. We solve Poisson's equation (16) numerically on a discrete spatial grid by employing a finite difference scheme, specifically the Successive Overrelaxation (SOR) method [45].
+
+## A. Simulations: Double Integrator
+
+We define a 2D occupancy map defined by an open, bounded and connected domain Ω where ∂ Ω characterizes obstacle surfaces, and consider the 2D double integrator model of the form (35) with state ⃗ y = ( y , ˙ y ) = ( x, y, ˙ x, ˙ y ) ∈ R 4 . We consider the task of stabilizing (35) to a goal position, from various initial conditions, with a nominal PD controller k nom ( ⃗ y ) , while avoiding collisions with the obstacle surfaces on ∂ Ω . To achieve this, we consider the solution h to (16) with the forcing function (29) and construct a CBF via backstepping (36). Using this CBF, we synthesize a safety filter to adjust k nom to ensure safety. The resultant trajectories for various initial conditions are depicted in Fig 4. We compare the behavior of this safety filter to one constructed via an SDF:
+
+<!-- formula-not-decoded -->
+
+where we also employ backstepping to construct a CBF.
+
+Traditional SDFs have fixed gradient magnitudes, leading to flat surfaces (i.e., without curvature) in the resulting safety function, as seen in Fig. 4. They also possess ridges with discontinuous gradients (of opposite sign) within unoccupied regions of the domain, which, unlike Poisson safety functions, result in undesirable chattering behavior when employed in safety filter synthesis. Additionally, Poisson safety functions constructed using the forcing function (29) and the guidance field (26) enable the assignment of arbitrary boundary flux values b via the boundary conditions in (26). Consequently, different flux values can be specified across regions of the boundary associated with different obstacles. This provides the flexibility to manipulate gradients around obstacles, which, among other benefits, aids in yielding trajectories that avoid undesired equilibria as demonstrated in Fig. 4.
+
+Remark 3. (Distance Functions via Elliptic PDEs) While prior work has approximated SDFs using elliptic PDEs [46], often relying on semilinear equations such as the screened
+
+Fig. 4: Double integrator simulations using safety filters synthesized from: [left] Signed Distance Function (40); and [middle and right] the Poisson Safety Function, constructed with the forcing function (29) with the guidance field (26) where the boundary conditions use [middle] a uniform boundary flux b ( y ) = -1 for all y ∈ ∂ Ω and [right] a non-uniform boundary flux b : ∂ Ω → R &lt; 0 , assigning different flux values across regions of the boundary associated with different obstacles. Sharp ridges in the SDF surface introduce gradient discontinuities, which lead to oscillations in the resulting trajectories-an issue which does not arise with Poisson safety functions due to their classical regularity (i.e., differentiability) properties. Furthermore, in contrast to SDFs with fixed gradients, the guidance field promotes the manipulation of boundary flux values via the assignment of b in (26), enabling the ability to encode gradients customized to specific obstacles, which we are unable to do with traditional SDFs. This flexibility helps yield trajectories that avoid undesired equilibria i.e., 'deadlocks', in [right] .
+
+<!-- image -->
+
+Poisson equation [47, Thm 2.3], our method intentionally does not produce an SDF. Instead, we leverage linear elliptic PDEs with classical regularity results as established in Theorem 4, which are critical in the synthesis of safety filters.
+
+## B. Hardware Experiments
+
+To demonstrate the practical performance of our proposed algorithm in synthesizing safe sets, we applied it to several collision avoidance scenarios using Unitree's Go2 quadruped and G1 humanoid robots. We leverage a reduced order model (ROM) hierarchical framework [23, 48] for these platforms based on (32). These ROMs assume that the robotic system has a sufficient low-level tracking controller, enabling the assignment of safe velocity commands without modification of unique low-level locomotion controllers.
+
+First, we perceive and segment the environment using a fixed RGB camera and the Meta SAM2 [49] segmentation algorithm. Next, we generate a 2D occupancy map, buffered for robot size. Finally, we solve (26) to generate a smooth guidance field, and, using (29), we solve (16) for the Poisson safety function. For dynamic environments, we improve the computational speed of our PDE solver by warm-starting each PDE solution with the previous safety function, producing solve times of 0 . 2 -0 . 3 ms. After considering the entire processing chain, we update the Poisson safety function h online at approximately 10 Hz.
+
+We employ this safety function in a CBF-based safety filter for a single integrator ROM (32) to produce safe velocity commands that are tracked by a low-level controller. Robot states are estimated by an OptiTrack motion capture system.
+
+1) Complex Static Environment -Quadruped : For the first experiment, we constructed a static environment. We initialized the quadruped at three different starting locations and commanded it to walk to a fixed goal point. In each case, the nominal controller attempted to drive the system directly to the goal without safety considerations. Meanwhile, the CBFbased safety filter modified these nominal commands. The results corresponding to this experiment are depicted in Fig 5.
+
+From these results, it is clear that the Poisson safety function enabled collision avoidance without hindering the nominal objective. The control inputs (Fig 5 (bottom left/middle)) show how the safety-filtered velocity commands deviated from nominal, as necessary. The evaluated value of h ( x, y ) maintained positivity throughout the duration of all three experiments, confirming that the robot never departed from the safe set C .
+
+Fig. 5: Hardware experiments demonstrating Poisson safety functions for safety filtering. [Top Left] A timelapse showing the motion of the Go2 quadruped during the 25-second tracking experiment, starting from three difference initial conditions (ICs). [Top Middle] The Poisson safety function constructed from real-time segmented image data. [Top Right] The resultant safe trajectories for each IC. [Bottom Left/Middle] The nominal (orange) and CBF safety-filtered (blue) velocity commands, in m/s, sent to the robot. [Bottom Right] The evaluated value of the Poisson safety function over the course of each experiment. This value remains above zero, confirming that safety was maintained.
+
+<!-- image -->
+
+- 2) Dynamic Environment -Quadruped : To further demonstrate the real-time utility of our approach, we consider a dynamically changing environment. As mentioned earlier, we compute the Poisson safety function online at approximately 10 Hz; however, this time we numerically incorporate the temporal change in h to approximate its time derivative via:
+
+<!-- formula-not-decoded -->
+
+We commanded a Go2 quadrupedal robot to track a nominal sinusoidal position reference; meanwhile, we introduced two obstacles (i.e., a desk chair and a yellow box) into the environment. By dynamically rearranging these obstacles, we tested the real-time efficacy of our safety-critical architecture. Fig 6 shows the dynamic performance.
+
+Examining the value of h during the experiment, it can be observed that the robot effectively employed its safety filter to avoid collisions. The value of h remained positive, confirming that the safe set C was rendered forward invariant.
+
+- 3) Dynamic Environment - Humanoid : We implemented an identical safety-critical controller on the G1 humanoid to show the versatility of our algorithm. We commanded a fixed position reference and introduced a moving obstacle into the environment. The results are presented in Fig 6.
+
+During the humanoid experiment, the CBF-based safety filter was effective in preventing collisions with the dynamic obstacle; however, the robot experienced minor safety violations, corresponding to moments when h was briefly negative. The difference in performance on the quadruped highlights the importance of accurate ROMs when designing safety-critical controllers [48]. In both cases, we filtered velocity commands (single-integrator (32)) to enforce safe set forward invariance. This is an accurate ROM for the quadruped, as the low-level locomotion controller effectively tracks velocity inputs with minimal error. Unfortunately, this ROM is less accurate for the humanoid, which struggles to track velocity commands due to model mismatch. The lag in velocity tracking manifested in modest departures from the safe set (i.e., brief moments when h was negative).
+
+Remark 4. (Real-time Computation) For the hardware experiments in this paper, we consider a 3 × 3 m 2 experimental environment, and we solve the 2D Poisson equation on an N × N discretized grid with N = 120 . We apply a SOR finite difference scheme [45], using checkerboard iterations for GPU parallelization. Parallel SOR iterations scale with √ N , and computations per iteration scale with N 2 ( N 3 in 3D). On a GeForce RTX 4070 GPU, we solve the PDE in 0 . 2 -0 . 3 ms with 10 -4 residual tolerance.
+
+## VII. LIMITATIONS
+
+A fundamental limitation of the proposed algorithm (and a limitation of all non-predictive safety filters) is that such safety-critical controllers may introduce undesired equilibria. These equilibria can manifest as 'deadlocks', where the system becomes trapped by obstacles and fails to achieve nominal tracking. Such problems are typically solved by introducing a navigational layer to the nominal controller to avoid regions
+
+<!-- image -->
+
+s
+
+Fig. 6: Hardware experiments demonstrating dynamic behavior on quadrupedal and humanoid robots. [Top Left] A timelapse showing the Go2 quadruped successfully avoiding dynamic complex obstacles in real-time. [Bottom Left] The value of the Poisson safety function h during the experiment. The positivity of h certifies that safety was maintained. [Top Right] A timelapse of the G1 humanoid during a dynamic collision avoidance demonstration. [Bottom Right] The value of h . Although no collisions occurred, the robot briefly left the safe set C .
+
+in the state-space that produce these undesired equilibria.
+
+Another limitation of the proposed approach is that the extension of the solution h , defined on Ω , to the unsafe regions Γ i , via Poisson's equation is guaranteed only to be Lipschitz continuous across safe and unsafe regions (i.e., across the boundary). The reason is that solving Poisson's Dirichlet problem results in unique solutions in each region ensuring h ( y ) = 0 on ∂ Ω (hence, continuity across ∂ Ω ). As a result, the directional derivatives from the safe and unsafe regions are not guaranteed to be equal in magnitude on ∂ Ω . However, from Hopf's lemma, one can verify that they have the same sign i.e., positive flux from each obstacle Γ i and negative flux into the safe region Ω . Thus, if safety violations occur, there exists a locally Lipschitz continuous controller enforcing attractivity to the safe set for a single integrator, but may require a less regular controller [50] for higher order systems. One way of obtaining a more regular h across these two regions is by a smooth extension of the solution h defined on Ω into Γ i . These extensions however, may require detailed geometrical characterizations of obstacle interiors, whereas Poisson's equation itself only requires information about the obstacle surfaces. Another approach is to employ mollifiers [14] to regularize h across these regions.
+
+## VIII. CONCLUSION
+
+We have presented an algorithm for generating safe sets for complex environments by solving Poisson's equation. Our method uses environmental perception data to define a domain, on which we impose boundary conditions, and formulate a boundary value problem for Poisson's equation with a novel forcing function. The resulting solution is a safety function-a functional representation of the environment that characterizes safety and defines the safe set. This safety function is also the unique minimizer of a variational problem, and has desirable regularity properties ideal for safety-critical control design in robotic applications. The real-time efficacy of the proposed algorithm enables its use in dynamically changing environments. To validate this, we utilize the safety function to synthesize
+
+CBF-based safety filters, and demonstrate their effectiveness in achieving collision avoidance on quadruped and humanoid robots navigating in complex, dynamic environments.
+
+## ACKNOWLEDGMENTS
+
+This work was supported by BP. The authors thank Ryan K. Cosner and Max H. Cohen for discussions and their insightful perspectives in the development and presentation of this work, and Lihzi Yang for the humanoid experimental setup.
+
+## REFERENCES
+
+- [1] S. Bansal, M. Chen, S. Herbert, and C. J. Tomlin, 'Hamilton-Jacobi reachability: A brief overview and recent advances,' in Proc. Conf. Decis. Control , pp. 22422253, 2017.
+- [2] M. Chen, S. L. Herbert, H. Hu, Y. Pu, J. F. Fisac, S. Bansal, S. Han, and C. J. Tomlin, 'Fastrack: A modular framework for real-time motion planning and guaranteed safe tracking,' IEEE Trans. Autom. Control , vol. 66, no. 12, pp. 5861-5876, 2021.
+- [3] K. P. Wabersich, A. J. Taylor, J. J. Choi, K. Sreenath, C. J. Tomlin, A. D. Ames, and M. N. Zeilinger, 'Datadriven safety filters: Hamilton-jacobi reachability, control barrier functions, and predictive methods for uncertain systems,' IEEE Control Systems Magazine , vol. 43, no. 5, pp. 137-177, 2023.
+- [4] F. Borrelli, A. Bemporad, and M. Morari, Predictive control for linear and hybrid systems . Cambridge University Press, 2017.
+- [5] K. P. Wabersich and M. N. Zeilinger, 'Predictive control barrier functions: Enhanced safety mechanisms for learning-based control,' IEEE Transactions on Automatic Control , vol. 68, no. 5, pp. 2638-2651, 2023.
+- [6] O. Khatib, 'Real-time obstacle avoidance for manipulators and mobile robots,' The international journal of robotics research , vol. 5, no. 1, pp. 90-98, 1986.
+- [7] A. Singletary, K. Klingebiel, J. Bourne, A. Browning, P. Tokumaru, and A. Ames, 'Comparative analysis of
+
+control barrier functions and artificial potential fields for obstacle avoidance,' in 2021 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , pp. 8129-8136, IEEE, 2021.
+
+- [8] A. D. Ames, X. Xu, J. W. Grizzle, and P. Tabuada, 'Control barrier function based quadratic programs for safety critical systems,' IEEE Trans. Autom. Control , vol. 62, no. 8, pp. 3861-3876, 2017.
+- [9] P. Glotfelter, J. Cort´ es, and M. Egerstedt, 'Nonsmooth barrier functions with applications to multi-robot systems,' IEEE Control Systems Letters , vol. 1, no. 2, pp. 310-315, 2017.
+- [10] T. G. Molnar and A. D. Ames, 'Composing control barrier functions for complex safety specifications,' IEEE Control Systems Letters , 2023.
+- [11] A. Singletary, W. Guffey, T. G. Molnar, R. Sinnet, and A. D. Ames, 'Safety-critical manipulation for collisionfree food preparation,' IEEE Robotics and Automation Letters , vol. 7, no. 4, pp. 10954-10961, 2022.
+- [12] H. Oleynikova, Z. Taylor, M. Fehr, R. Siegwart, and J. Nieto, 'Voxblox: Incremental 3d euclidean signed distance fields for on-board mav planning,' in IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , pp. 1366-1373, IEEE, 2017.
+- [13] K. Long, C. Qian, J. Cort´ es, and N. Atanasov, 'Learning barrier functions with memory for robust safe navigation,' IEEE Robotics and Automation Letters , vol. 6, no. 3, pp. 4931-4938, 2021.
+- [14] D. Gilbarg and N. S. Trudinger, Elliptic partial differential equations of second order , vol. 224. Springer, 1977.
+- [15] J. Jost, Partial Differential Equations , vol. 214. Springer Science &amp; Business Media, 3rd ed., 2012.
+- [16] C. I. Connolly, J. B. Burns, and R. Weiss, 'Path planning using laplace's equation,' in Proceedings., IEEE International Conference on Robotics and Automation , pp. 2102-2106, IEEE, 1990.
+- [17] C. I. Connolly and R. A. Grupen, 'The applications of harmonic functions to robotics,' Journal of robotic Systems , vol. 10, no. 7, pp. 931-946, 1993.
+- [18] J.-O. Kim and P. Khosla, 'Real-time obstacle avoidance using harmonic potential functions,' IEEE Transactions on Robotics and Automation , vol. 8, no. 3, pp. 338-349, 1992.
+- [19] D. Gingras, E. Dupuis, G. Payre, and J. de Lafontaine, 'Path planning based on fluid mechanics for mobile robots using unstructured terrain models,' in 2010 IEEE International Conference on Robotics and Automation , pp. 1978-1984, 2010.
+- [20] A. D. Ames, J. W. Grizzle, and P. Tabuada, 'Control barrier function based quadratic programs with application to adaptive cruise control,' in Proc. Conf. Decis. Control , (Los Angeles, CA), pp. 6271-6278, Dec. 2014.
+- [21] T. Gurriet, A. Singletary, J. Reher, L. Ciarletta, E. Feron, and A. Ames, 'Towards a framework for realizable safety critical control through active set invariance,' in 2018 ACM/IEEE 9th International Conference on Cyber-
+
+Physical Systems (ICCPS) , pp. 98-106, IEEE, 2018.
+
+- [22] A. D. Ames, S. Coogan, M. Egerstedt, G. Notomista, K. Sreenath, and P. Tabuada, 'Control barrier functions: theory and applications,' in Proc. Eur. Control Conf. , pp. 3420-3431, 2019.
+- [23] T. G. Molnar, R. K. Cosner, A. W. Singletary, W. Ubellacker, and A. D. Ames, 'Model-free safety-critical control for robotic systems,' IEEE Robot. Aut. Lett. , vol. 7, no. 2, pp. 944-951, 2022.
+- [24] M. H. Cohen, R. K. Cosner, and A. D. Ames, 'Constructive safety-critical control: Synthesizing control barrier functions for partially feedback linearizable systems,' IEEE Control Systems Letters , 2024.
+- [25] G. Bahati, R. K. Cosner, M. H. Cohen, R. M. Bena, and A. D. Ames, 'Control barrier function synthesis for nonlinear systems with dual relative degree,' arXiv preprint arXiv:2504.00397 , 2025.
+- [26] P. P´ erez, M. Gangnet, and A. Blake, 'Poisson image editing,' ACM Trans. Graph. , vol. 22, p. 313-318, July 2003.
+- [27] L. Perko, Differential equations and dynamical systems , vol. 7. Springer Science &amp; Business Media, 2013.
+- [28] F. Blanchini, 'Set invariance in control,' Automatica , vol. 35, no. 11, pp. 1747-1767, 1999.
+- [29] A. Isidori, Nonlinear control systems: an introduction . Springer, 1985.
+- [30] A. J. Taylor, P. Ong, T. G. Molnar, and A. D. Ames, 'Safe backstepping with control barrier functions,' in Proc. Conf. Decis. Control , pp. 5775-5782, 2022.
+- [31] L. Doeser, P. Nilsson, A. D. Ames, and R. M. Murray, 'Invariant sets for integrators and quadrotor obstacle avoidance,' in Proceedings of the American Control Conference , pp. 3814-3821, 2020.
+- [32] L. Rosales, 'Generalizing Hopf's boundary point Lemma,' Canadian Mathematical Bulletin , vol. 62, no. 1, pp. 183-197, 2019.
+- [33] D. E. Apushkinskaya and A. I. Nazarov, 'Around the normal derivative lemma,' arXiv preprint arXiv:2206.08043 , 2022.
+- [34] P. Grisvard, Elliptic problems in nonsmooth domains . SIAM, 2011.
+- [35] M. Borsuk and V. Kondratiev, Elliptic boundary value problems of second order in piecewise smooth domains , vol. 69. Elsevier, 2006.
+- [36] N. V. Krylov, 'Lectures on elliptic and parabolic equations in H¨ older spaces,' American Mathematical Society , 1996.
+- [37] R. Fiorenza, H¨ older and locally H¨ older continuous functions, and open sets of class C k , C k,λ . Birkh¨ auser, 2017.
+- [38] L. C. Evans, Partial differential equations . American Mathematical Society, 1998.
+- [39] J. E. Marsden and A. Tromba, Vector calculus . Macmillan, 2003.
+- [40] O. D. Kellogg, Foundations of potential theory , vol. 31. Springer Science &amp; Business Media, 2012.
+- [41] M. H. Cohen, P. Ong, G. Bahati, and A. D. Ames, 'Char-
+
+acterizing smooth safety filters via the implicit function theorem,' IEEE Contr. Syst. Lett. , vol. 7, pp. 3890-3895, 2023.
+
+- [42] E. D. Sontag, 'A Universal Construction of Artstein's Theorem on Nonlinear Stabilization,' Systems &amp; control letters , vol. 13, no. 2, pp. 117-123, 1989.
+- [43] A. J. Taylor, P. Ong, T. G. Molnar, and A. D. Ames, 'Safe backstepping with control barrier functions,' in 2022 IEEE 61st Conference on Decision and Control (CDC) , pp. 5775-5782, IEEE, 2022.
+- [44] H. Br´ ezis, Functional analysis, Sobolev spaces and partial differential equations , vol. 2. Springer, 2011.
+- [45] J. C. Strikwerda, Finite difference schemes and partial differential equations . SIAM, 2004.
+- [46] A. G. Belyaev and P.-A. Fayolle, 'On variational and pde-based distance function approximations,' in Computer Graphics Forum , vol. 34, pp. 104-118, Wiley Online Library, 2015.
+- [47] S. R. S. Varadhan, 'On the behavior of the fundamental solution of the heat equation with variable coefficients,' Communications on Pure and Applied Mathematics , vol. 20, no. 2, pp. 431-455, 1967.
+- [48] M. H. Cohen, T. G. Molnar, and A. D. Ames, 'Safetycritical control for autonomous systems: Control barrier functions via reduced order models,' Annual Reviews in Control , vol. 57, p. 100947, 2024.
+- [49] N. Ravi, V. Gabeur, Y.-T. Hu, R. Hu, C. Ryali, T. Ma, H. Khedr, R. R¨ adle, C. Rolland, L. Gustafson, E. Mintun, J. Pan, K. V. Alwala, N. Carion, C.-Y. Wu, R. Girshick, P. Doll´ ar, and C. Feichtenhofer, 'Sam 2: Segment anything in images and videos,' 2024.
+- [50] J.-M. Coron, Control and Nonlinearity . American Mathematical Society, 2007.
+- [51] M. H. Protter and H. F. Weinberger, Maximum principles in differential equations . Springer Science &amp; Business Media, 2012.
+- [52] X. Fern´ andez-Real and X. Ros-Oton, Regularity Theory for Elliptic PDE . Zurich Lectures in Advanced Mathematics, European Mathematical Society, 2022.
+- [53] B. Dacorogna, Introduction to the Calculus of Variations . World Scientific, 2004.
+- [54] L. A. Caffarelli and X. Cabr´ e, Fully nonlinear elliptic equations , vol. 43. American Mathematical Society, 1995.
+- [55] B. Dacorogna, Direct methods in the Calculus of Variations , vol. 78. Springer Science &amp; Business Media, 2007.
+- [56] W. Xiao and C. Belta, 'High-order control barrier functions,' IEEE Transactions on Automatic Control , vol. 67, no. 7, pp. 3655-3662, 2021.
+- [57] X. Tan, W. S. Cortez, and D. V. Dimarogonas, 'High-order barrier functions: Robustness, safety, and performance-critical control,' IEEE Transactions on Automatic Control , vol. 67, no. 6, pp. 3021-3028, 2022.
+- [58] P. Ong, M. H. Cohen, T. G. Molnar, and A. D. Ames, 'Rectified control barrier functions for high-order safety constraints,' IEEE Control Systems Letters , 2024.
+
+## APPENDIX A POISSON'S EQUATION
+
+This appendix reviews key concepts from second-order linear elliptic PDEs, emphasizing details relevant to our results. The notation and expositions follow [14, 15, 38].
+
+## A. Dirichlet Problem for Poisson's equation
+
+Let Ω ⊂ R 3 be an open, bounded and connected set with smooth boundary ∂ Ω , such that Ω = Ω ∪ ∂ Ω . Poisson's equation is a second-order linear elliptic PDE defined by:
+
+<!-- formula-not-decoded -->
+
+where y = ( x, y, z ) ∈ R 3 , ∆ = ∂ 2 ∂x 2 + ∂ 2 ∂y 2 + ∂ 2 ∂z 2 is the Laplacian and f : Ω → R is a given forcing function. If f ( y ) = 0 for all y ∈ Ω , (42) is a homogeneous elliptic PDE called Laplace's equation. To completely determine solutions to (42), boundary conditions must be specified to characterize the behavior of a solution on ∂ Ω [38]. Dirichlet boundary conditions specify the solution's value, while Neumann boundary conditions specify the normal derivatives on ∂ Ω . In this work, we consider solutions h : Ω → R satisfying Poisson's equation subject to Dirichlet boundary conditions:
+
+<!-- formula-not-decoded -->
+
+A classical solution is a twice continuously differentiable function h ∈ C 2 (Ω) satisfying (43). The sign of the values of the forcing function f ( · ) in Ω leads to further characterizations of the solution to (43), provided in the following definition.
+
+Definition 5. Let Ω ⊂ R 3 be an open, bounded and connected set. A function h ∈ C 2 (Ω) satisfying ∆ h ( y ) = 0 ( ≥ 0 , ≤ 0) in Ω is called harmonic ( subhamornic, superharmonic ) in Ω .
+
+In the following subsections, we discuss the structural properties of solutions to the boundary value problem (43) relevant to the developments presented in this paper.
+
+## B. Gauss's Divergence Theorem
+
+A solution h ∈ C 2 (Ω) to (43) represents the density of some quantity across the domain Ω . The flux of the vector field Dh is the net flow of h across the boundary of the domain, and is given by the surface integral of the normal component of Dh (i.e., outward directional derivative of h ) as follows:
+
+<!-- formula-not-decoded -->
+
+where ˆ n : ∂ Ω → R 3 is the outward-pointing unit normal on ∂ Ω , d A is the surface element of ∂ Ω and:
+
+<!-- formula-not-decoded -->
+
+for all y ∈ ∂ Ω . Given this property, we highlight a fundamental theorem associated with vector fields on closed domains.
+
+Theorem 2. (Gauss's Divergence Theorem [39]) Let Ω ⊂ R 3 be an open, bounded and connected set with smooth boundary
+
+∂ Ω . Let ˆ n : ∂ Ω → R 3 be an outward unit normal vector on ∂ Ω and suppose h ∈ C 2 (Ω) , ensuring the vector field Dh ∈ C 1 (Ω; R 3 ) . Then:
+
+<!-- formula-not-decoded -->
+
+where ∆ h = div( Dh ) = ∇ · Dh is the divergence of Dh , d V := d x d y d z denotes the volume element of Ω and d A is the surface element of ∂ Ω .
+
+Gauss's divergence theorem states that the flux of a vector field through a closed surface equals the integral of the divergence of that vector field over the volume enclosed by the surface. This condition is particularly helpful in the designing forcing functions f , as demonstrated in Section IV.
+
+## C. Maximum and Minimum Principles
+
+Second derivatives provide information about the extremal values of a function. For Poisson's equation, the strong maximum and minimum principles state that a subhamornic (superharmonic) function h attains its maximum (minimum) in Ω if and only if h is constant, while weak maximum and minimum principles further state that bounded subhamornic (superharmonic) functions attain their extremal values on the boundary of Ω , as we highlight in the following theorem.
+
+Theorem 3. (Weak Maximum and Minimum Principle [51]) Let Ω ⊂ R 3 be an open, bounded, connected set. If a function h ∈ C 2 (Ω) satisfies ∆ h ( y ) ≥ 0 ( ≤ 0) in Ω , then the maximum (minimum) value of h is on the boundary ∂ Ω . That is:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+The above theorem follows from the mean value property [38], which states that the value of a function at any point in Ω is equal to the average over a ball centered around that point. A key result from Theorem 3 is Hopf's lemma, which gives a statement about the sign of the normal derivatives of h on ∂ Ω . To facilitate this, we introduce a key property that a domain must satisfy.
+
+Definition 6. (Interior Sphere Condition [38]) An open set Ω satisfies the interior sphere condition at y 0 ∈ ∂ Ω , if there exists an open ball B ρ ( y ) ⊂ Ω of radius ρ &gt; 0 and y ∈ Ω such that ∂B ρ ( y ) ∩ ∂ Ω = { y 0 } .
+
+The above definition states every point on ∂ Ω can be touched from inside with a closed ball contained in Ω as shown in Figure 7. Notice, if the above condition holds for all points on ∂ Ω , then Ω cannot have outward-pointing 'corners', though it may have inward-pointing ones. In this work, we assume smooth boundaries, which guarantees the above condition holds and that the gradient Dh exists at each point on ∂ Ω as in (45). However, this analysis can be readily extended to nonsmooth boundaries under appropriate conditions [34, 35]. Following from this, we have the following lemma for the directional derivatives on ∂ Ω .
+
+Fig. 7: Interior sphere condition for [left] smooth boundary and [right] Lipschitz boundary.
+
+<!-- image -->
+
+Lemma 2. (Hopf's Lemma [51]) Consider an open, bounded and connected set Ω ⊂ R 3 with smooth boundary ∂ Ω , and let h ∈ C 2 (Ω) such that ∆ h ≥ 0 ( ≤ 0) in Ω . If y 0 ∈ ∂ Ω is an extremal point of h as in Theorem 3, then we have:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+where ˆ n ( y 0 ) is the outward-pointing unit normal to ∂ Ω at y 0 .
+
+The maximum and minimum principles can be used to establish the uniqueness of a classical solution h ∈ C 2 (Ω) to (43), assuming the solution exists [14, Theorem 2.4]. However, these principles do not address the existence of a classical solution. We devote the next subsection to this discussion.
+
+## D. Existence and Regularity of Classical Solutions
+
+The existence of classical solutions to (43) relies on the properties of the forcing function f . Naturally, one would expect the solution h to (43) to be 'twice more differentiable' than f . However, this is not always true (except for the onedimensional case), and often depends on the function space specifying the regularity of f [14, 15]. A sufficient condition for (43) to admit a classical solution on Ω is that f is H¨ older continuous, presented in the following definition.
+
+Definition 7. (H¨ older Continuity [37]) A function f ∈ C 0 ,α (Ω) is said to be H¨ older continuous on Ω with order α if for some 0 &lt; α &lt; 1 , there exists M &gt; 0 such that:
+
+<!-- formula-not-decoded -->
+
+We call C 0 ,α (Ω) the space of H¨ older continuous functions of order α , with α = 1 denoting Lipschitz continuous functions.
+
+Specifically, C k,α (Ω) is the space of C k (Ω) functions whose partial derivatives of order k ∈ N 0 belong to C 0 ,α (Ω) . That is, α ∈ (0 , 1) describes the regularity of the k -th partial derivatives of f . We further have that C k, 0 (Ω) = C k (Ω) . Furthermore, H¨ older continuous functions are uniformly continuous, thus, f ∈ C k,α (Ω) denotes a function f ∈ C k,α (Ω) whose partial derivatives up to order k admit continuous extensions to Ω . The following theorem guarantees that all second derivatives of h lie in the same function space as f .
+
+Theorem 4. (Classical Elliptic Regularity [14]) Let Ω ⊂ R 3 be an open, bounded and connected set with smooth boundary ∂ Ω . Suppose f ∈ C k,α (Ω) for some 0 &lt; α &lt; 1 and k ∈ N 0 . Then there exists a unique solution h ∈ C 2+ k,α (Ω) to (43) . Furthermore, f ∈ C ∞ (Ω) = ⇒ h ∈ C ∞ (Ω) .
+
+The interior regularity of h on Ω is determined by the regularity of f , and global regularity on Ω follows by extending the interior regularity to the boundary, given that the boundary is (sufficiently) smooth as we assumed. Schauder theory [14, Chap. 6] provides classical regularity results for general linear elliptic PDEs in H¨ older spaces. In the above theorem, the existence of a classical solution to (43) with a H¨ older continuous f is guaranteed by Kellogg's Theorem (see [14, Theorem 6.14]) and [15, Theorem 13.3.1]. For interior higher-order regularity, refer to [14, Theorem 6.17], while for global higher-order regularity, see [14, Theorem 6.19].
+
+Remark 5. The above theorem does not hold for α = 0 , and α = 1 , that is, h is not guaranteed to be twice differentiable if f is merely continuous or even Lipschitz continuous, and may require further technical assumptions and developments to establish this. For an introduction to elliptic regularity theory, refer to [52]; for elliptic equations in H¨ older spaces, see [36].
+
+## E. Optimality
+
+A solution to Poisson's equation can also be recognized as the minimizer of an appropriate functional in the appropriate function space. By recognizing that the solution to a PDE is the critical point of an associated cost functional, proving the existence, uniqueness (e.g. via convexity arguments), and regularity of a minimizing solution can, in some cases, be easier than working directly with the PDE. We have the following theorem for classical solutions to Poisson's equation.
+
+Theorem 5. (Dirichlet's Principle [38, 53]) Let Ω be an open, bounded and connected set with smooth boundary ∂ Ω . Suppose h ∈ C 2 (Ω) is the solution to the Dirichlet problem for Poisson's equation (43) . Then h is the unique minimizer of the variational problem:
+
+<!-- formula-not-decoded -->
+
+in the set of admissible functions:
+
+<!-- formula-not-decoded -->
+
+Conversely, if h ∈ H satisfies (51) , then it solves the boundary value problem (43) .
+
+The above theorem states that h ∈ H being the solution to the PDE (43) is equivalent to the statement that h minimizes J [ · ] . This follows from the fact that a necessary condition for optimality of a C 2 (Ω) minimizer of J [ · ] is that it satisfies the Euler-Lagrange equation [53], which, in the case of (51), corresponds Poisson's equation (43). The uniqueness of a solution to (43) certifies it as the unique minimizer of J [ · ] .
+
+The main challenge of Dirichlet's principle is that it is not obvious whether (51) attains its minimum in the chosen class of functions in the set (52). The above theorem is an 'inverse' optimal statement as we already assumed the knowledge of a C 2 (Ω) solution to Poisson's equation (43), which, as earlier mentioned, relies on the regularity properties of f . Therefore, for forcing functions f that are not H¨ older continuous, it is useful to consider solutions in less regular function spaces, which we briefly discuss next.
+
+## F. Weak Solutions
+
+For less regular f , which may be discontinuous or lack continuous derivatives, solutions h to (43) need not be continuous or even continuously differentiable. Moreover, minimizers of (51) may not exist in (52). In such cases, one would prove the existence of a generalized or weak solution to allow for wider class of candidate solutions [38, 44]. Typically, weak solutions satisfy a criterion-often based on integration by parts-that is necessary and sufficient for a differentiable function to solve a PDE, but does not require differentiability. Thus, every classical solution is also a weak solution. A common condition for less regular f that yields weak solutions is integrability, where f ∈ L p (Ω) for p ∈ (1 , ∞ ) . For further details on L p regularity theory for elliptic equations, see [14, 15, 52, 54].
+
+To establish existence of a classical solution, it is often easier to first prove the existence of a weak solution and then prove sufficient regularity such that this weak solution is also a classical solution. Consequently, in variational methods [53, 55], a minimizer h of (51) has to satisfy the corresponding Euler-Lagrange equation in its weak form 4 , and if h is sufficiently regular, also in the classical sense (43).
+
+In this paper, we focus on classical solutions to (43) as they provide continuous derivatives which are convenient for control design in robotic applications, and present our results for H¨ older continuous forcing functions f . However, our results can be generalized to less regular f that yield weak solutions, provided that a proof of regularity-to obtain classical solutions-can be established.
+
+## G. Equivalence of Variational Problems
+
+We provide an equivalent formulation of the variational problem associated with (24) to show that a C 2 (Ω) minimizer of I [ · ] is also the minimizer of a functional with the structure J [ · ] in Theorem 5. In particular, we have the following:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+where we used the product rule ∇· ( h⃗ v ) = Dh · ⃗ v + h ∇· ⃗ v and Gauss's divergence theorem for the cross-terms to yield:
+
+<!-- formula-not-decoded -->
+
+4 Weak forms (and weak solutions) are employed in Finite Element Method (FEM) algorithms [15] to obtain approximate solutions to (43).
+
+since h ( y ) = 0 on ∂ Ω . Computing the Euler-Lagrange equation associated with (55) yields (25), thus verifying that a C 2 (Ω) minimizer of I [ · ] is also a minimizer of the functional:
+
+<!-- formula-not-decoded -->
+
+since the last term in (55) does not affect (25). That is, (25) arises as the necessary condition for optimality for both I [ · ] and J [ · ] , with the structure of J [ · ] guaranteed by Theorem 5. For further discussion on Euler-Lagrange equations, see [53].
+
+## APPENDIX B
+
+## SAFETY-CRITICAL CONTROL FOR HIGH-ORDER SYSTEMS VIA POISSON SAFETY FUNCTIONS
+
+We generalize the discussions in Section V and formalize them for systems defined as integrator chains (10) for outputs (13) of relative degree r ∈ N .
+
+## A. CBF Backstepping for High-Order Systems
+
+Let r ≥ 2 and suppose h ∈ C 2+ k,α (Ω) is a solution to (43) satisfying Theorem 1, for some α ∈ (0 , 1) and k ∈ N 0 such that r ≤ k + 1 . Define the following function via a backstepping procedure as denoted in [24, 43]:
+
+<!-- formula-not-decoded -->
+
+where k i ∈ C r -i +1 ( R 3 i × R × R 3 ×··· × R 3 i -1 × R 3 i ; R 3 ) for 1 ≤ i ≤ r -1 are recursively designed auxiliary safe controllers (see [43, Theorem 5]). The time derivatives of k i are of the structure:
+
+<!-- formula-not-decoded -->
+
+The function (60) defines a 0 -superlevel set given by:
+
+<!-- formula-not-decoded -->
+
+we wish to render forward invariant. To design a controller yielding unique solutions (i.e., trajectories) to (10), the gradients of (60) must be at least Lipschitz continuous. Consequently, the r -th partial derivatives of h must be Lipschitz continuous, while the higher order partial derivatives (i.e., r +1 and beyond) can be H¨ older continuous, as they are not directly used. This condition arises from the fact that H¨ older continuity guarantees the existence but not uniqueness of solutions to ODEs. The condition r ≤ k + 1 in Lemma 1 ensures this requirement is satisfied, and enables the following theorem.
+
+Theorem 6. (Forward Invariance for High-Order Systems) Let Ω ⊂ R 3 be an open, bounded and connected set with piecewise smooth boundary ∂ Ω . Consider the system (10) for outputs with relative degree r ≥ 2 , and a safe set C defined as the 0 -super level set of a function h : Ω → R . Suppose that h is the solution to (43) with a forcing function f ∈ C k,α (Ω; R &lt; 0 ) for some α ∈ (0 , 1) and k ∈ N 0 , and consider the function (60) defining the 0 -super level set C B in (63) . If r ≤ k + 1 , then given ⃗ y (0) = y 0 ∈ C B , there exists a locally Lipchitz continuous control law w = k ( ⃗ y ) for (10) such that:
+
+<!-- formula-not-decoded -->
+
+for all ⃗ y ∈ C B , γ &gt; 0 . Thus C B is rendered forward invariant and (60) is a CBF for (10) .
+
+̸
+
+Proof: As shown in Theorem 1 and Proposition 1, it can verified using Hopf's Lemma and the weak minimum principle that the solution h ∈ C 2+ k,α (Ω; R ≥ 0 ) guaranteed by Theorem 4 satisfies Dh ( y ) = 0 when h ( y ) = 0 , i.e., when y ∈ ∂ C . Taking the time derivative of (60), we have:
+
+<!-- formula-not-decoded -->
+
+where the time derivative ˙ k r -1 is of the form:
+
+<!-- formula-not-decoded -->
+
+Leveraging Lemma 1, it follows that D r h is Lipschitz continuous on C for all r ≤ k +1 . Therefore, it follows from [43, Theorem 5] that there exists a locally Lipschitz continuous control law w = k ( ⃗ y ) satisfying (64). Therefore, Nagumo's theorem holds and C B is rendered forward invariant. As a result, h B serves as a CBF for (10).
+
+## B. High-Order Control Barrier Functions
+
+An alternative approach to constructing CBFs for systems of high relative degree is High-Order CBFs (HOCBFs) [56]. HOCBFs define a CBF candidate recursively by differentiating h until the input appears. Consider the system (10) for outputs with a relative degree r ≥ 2 , and let h ∈ C 2+ k,α (Ω) be a solution to (43) for some α ∈ (0 , 1) and k ∈ N 0 such that r ≤ k +1 . Define h i recursively as follows:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+with γ i &gt; 0 where each h i and ˙ h i explicitly depends on:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+where ˜ y = ( y , · · · , y ( i ) ) represents the state variables up to the i -th derivative. Each function h i defines a 0-superlevel set:
+
+<!-- formula-not-decoded -->
+
+with C 0 = C . These sets are used to define a safe set as the intersection:
+
+<!-- formula-not-decoded -->
+
+which we aim to render forward invariant. The function:
+
+<!-- formula-not-decoded -->
+
+is a HOCBF for (10) restricted to C H if C H can be rendered forward invariant via a locally Lipschitz continuous controller w = k ( ⃗ y ) satisfying:
+
+<!-- formula-not-decoded -->
+
+̸
+
+for all ⃗ y ∈ C H with γ &gt; 0 . From (72), we observe that ˙ h H depends on D r h . Therefore, if h H is an HOCBF, then by Lemma 1, there exists a locally Lipschitz continuous controller satisfying (75) if r ≤ k + 1 . However, to guarantee the existence of such a controller, HOCBFs further assume a uniform relative degree by requiring Dh H ( ⃗ y ) B = 0 for all ⃗ y ∈ C H . However, one can verify that:
+
+<!-- formula-not-decoded -->
+
+̸
+
+and because the set C generated by (43) is compact, the condition Dh H ( ⃗ y ) B = 0 is not guaranteed to hold for all ⃗ y ∈ C H ⊂ C . This leads to a notion of weak relative degree [57] and requires further technical development to guarantee the forward invariance of C H as addressed in [58]. Nevertheless, h ∈ C 2+ k,α (Ω) can be used to construct a candidate HOCBF, h H as defined in (74).

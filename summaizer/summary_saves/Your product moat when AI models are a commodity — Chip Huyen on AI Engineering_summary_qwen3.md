@@ -1,0 +1,61 @@
+# Summary (qwen3)
+
+- **Engineering and Machine Learning**
+  - Coding by itself is very boring.
+  - The job of an engineer is to solve problems, not just write code.
+  - Solving technical problems is different from solving problems that humans can understand.
+  - Engineers should focus on solving problems that have real-world impact.
+  - The role of an engineer is to solve problems that humans can understand.
+  - The process of building machine learning applications has changed significantly over time.
+  - Previously, the process started with a lot of data, then building a model, then deploying it.
+  - Now, the process starts with a product or a demo.
+  - If the demo is successful, more data and model refinement follow.
+  - The competitive advantage now lies in product and data, not in the model itself.
+  - The model is now commoditized with widely used models like GPT, Gemini, etc.
+  - The hardest challenge in building AI applications is user experience and collecting feedback.
+  - Technical challenges are relatively straightforward to solve.
+  - Understanding the human aspect of AI applications is difficult.
+  - Very few people actually build their own models now.
+  - Building models can lead to high salaries, with some people earning millions.
+  - AI is now a tool that is accessible to everyone, similar to databases and JavaScript.
+
+- **Example: Chatbot Engineering**
+  - A common use case is customer support chatbots.
+  - Simple queries like password recovery can be handled without AI.
+  - Complex queries like billing disputes should be routed to human operators.
+  - A router is used to determine the best response method (FAQ, human, or model).
+  - The router is a classical classifier that can be built in-house.
+  - The model's response may need to be checked for safety before being sent to users.
+  - A safety detector or score is used to ensure the response is appropriate.
+  - AI is part of the broader engineering stack, not a standalone solution.
+
+- **Anti-Patterns in AI Application Development**
+  - Some teams use AI without fully understanding its limitations.
+  - Example: An app that uses Gen AI to optimize electricity bills.
+  - The team assumed AI would reduce bills by 30%, but didn't test simpler alternatives.
+  - A simple brute force approach could have achieved similar results without AI.
+  - Many teams fail to validate their assumptions with real users.
+  - Building a good product is challenging, even with AI.
+  - Example: A meeting summarizer app that failed to understand user needs.
+  - Users care more about action items than the length of the summary.
+  - Intuition about user preferences is often incorrect.
+  - LinkedIn’s chatbot for job fit assessments failed to understand user needs.
+  - Users wanted validation and guidance, not just correct answers.
+  - The chatbot should have provided alternative job options or skill recommendations.
+  - Tax filing software’s chatbot was not used by users.
+  - Internal tests showed good results, but real users found it unusable.
+  - Users lacked knowledge of tax systems and preferred click-through interfaces.
+  - Pre-populated questions increased user engagement.
+
+- **Challenges in Building AI Products**
+  - Using AI is easy, but building a product on top of AI is difficult.
+  - Demos are easy, but scaling to real users is challenging.
+  - User behavior is complex and hard to predict.
+  - Early internet and mobile usage patterns were not understood initially.
+  - Understanding user needs and behavior is crucial for product success.
+  - Technical challenges are becoming easier to solve with AI.
+  - AI is making coding more enjoyable and efficient.
+  - Writing code is boring, but using AI to write code is fun.
+  - The job of an engineer is to solve problems, not just write code.
+  - The focus should be on creating user-friendly and productive applications.
+  - AI is enabling engineers to build more applications faster and with less effort.

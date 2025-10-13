@@ -1,0 +1,57 @@
+# Summary (hf.co/unsloth/gpt-oss-20b-GGUF:latest)
+
+- **Speaker’s main thrust**
+  - Emphasizes the gap between the *hype* around AI, robotics, and humanoids, and the *real, scalable solutions* that industrial leaders need now.
+  - Sets the discussion in the context of the *Automate* event, where the audience is already pre‑occupied with automation opportunities.
+
+- **Key facts on labor & industry pressure**
+  - Declining working‑age population in developed economies → fewer hands for manufacturing.
+  - U.S. data: 1 in 5 durable‑goods jobs unfilled; 20 % vacancy rate; ~622,000 open manufacturing roles.
+  - Reshoring momentum has outpaced the available labor force.
+  - Rising demand for *short‑run customization* requires flexibility, not just volume.
+
+- **Why the *humanoid* narrative is misleading**
+  - Early prototypes show limited real‑world readiness:
+    - Battery life of 1–3 hrs.
+    - Payload usually ≤ 20 kg.
+    - Adding joints, fragile, reduces energy efficiency.
+    - Active control for stability makes them unstable on factory floors.
+  - Market projections (Goldman Sachs, Morgan Stanley, Deutsche Bank) are *long‑shot*; adoption will not surge until costs collapse (≈2050).
+  - Existing industrial ecosystems (universal robots, mobile industrial robots) already provide the AI needed for physical tasks—no human form factor required.
+
+- **What industrial leaders actually need today**
+  1. **Safety & reliability** – non‑negotiable baseline.  
+  2. **Measurable results** – gains in quality, productivity, accuracy, profitability (cited in 2024 Universal Robotics survey).  
+  3. **Better workplaces** – remove unsafe, repetitive or unattractive tasks; make factory roles attractive to the remaining workforce.  
+  4. **Seamless integration** – automation must slot into existing tools, workflows, and infrastructure.  
+  5. **Fast, flexible deployment** – no long integration cycles; solutions should be re‑programmable by existing operators.
+
+- **Practical approach: “function before form”**
+  - Prefer **robotic cobots** for high‑precision repetitive work; they out‑perform humanoids with higher payload, longer reach, and simpler deployment.  
+  - Use **mobile industrial robots (AMRs)** for dynamic, unstructured movement, AI‑powered navigation, and fleet optimisation.  
+  - Combine cobots + AMRs (“mobile cobots”) to cover high‑mix, high‑variety environments.
+
+- **Role of AI in current robotics**
+  - Called *physical AI*: moved beyond analytics into real‑time physical execution.  
+  - Examples:
+    - Universal Robots: dynamic path planning, component sorting, adaptive learning from operator feedback.  
+    - Mobile robots: route optimisation, obstacle avoidance, fleet charging scheduling.
+  - AI algorithms are independent of human form; they can run on any advanced platform.
+
+- **Ecosystem and collaboration are critical**
+  - No single company can deliver end‑to‑end solutions; many partners needed.  
+  - At Automate floor: > 50 solutions showcased, many from third‑party innovators.  
+  - Example partnership: RoboTech’s PE‑20 palatizing system – ready‑to‑deploy, high‑payload, no custom code needed.
+
+- **Future outlook**
+  - Automation becomes *foundational* as labor shortages, productivity pressure, and reshoring accelerate.
+  - AI expected to permeate scheduling, energy optimisation, maintenance, dynamic coordination.
+  - Emphasis on *human‑centric* tech: intuitive, safe, flexible systems that *empower* rather than replace the workforce.
+  - Mobile manipulation & smart work‑cell layouts will change footprint considerations and deployment speed.
+
+- **Actionable take‑away for leaders**
+  - **Build around the problem, not the robot.**  
+  - Start with application, engineer backwards, and use up‑to‑date, proven technology.  
+  - Adopt **open platforms** (hardware & software APIs) to enable internal teams, integrators, and partners to co‑create.
+  - Treat automation as a *capability* that evolves with the business, not a fixed capital project.  
+  - Upskill operators to collaborate with collaborative systems and reduce physical strain.

@@ -1,0 +1,332 @@
+## Safe Whole-Body Task Space Control for Humanoid Robots
+
+Victor C. Paredes 1 and Ayonga Hereid 1
+
+Abstract -Complex robotic systems require whole-body controllers to deal with contact interactions, handle closed kinematic chains, and track task-space control objectives. However, for many applications, safety-critical controllers are important to steer away from undesired robot configurations to prevent unsafe behaviors. A prime example is legged robotics, where we can have tasks such as balance control, regulation of torso orientation, and, most importantly, walking. As the coordination of multi-body systems is non-trivial, following a combination of those tasks might lead to configurations that are deemed dangerous, such as stepping on its support foot during walking, leaning the torso excessively, or producing excessive centroidal momentum, resulting in non-human-like walking. To address these challenges, we propose a formulation of an inverse dynamics control enhanced with exponential control barrier functions for robotic systems with numerous degrees of freedom. Our approach utilizes a quadratic program that respects closed kinematic chains, minimizes the control objectives, and imposes desired constraints on the Zero Moment Point, friction cone, and torque. More importantly, it also ensures the forward invariance of a general user-defined high Relative-Degree safety set. We demonstrate the effectiveness of our method by applying it to the 3D biped robot Digit, both in simulation and with hardware experiments.
+
+## I. INTRODUCTION
+
+Humanoid robots have emerged as a highly promising platform for performing complex tasks in human-centered environments due to their anthropomorphic structure. With dedicated legs and arms, these robots are well-equipped to simultaneously walk and manipulate objects. However, effectively coordinating the movements of legs and arms in a safe and stable manner is not a straightforward task. The dynamic coupling between these components makes independent control prone to instability and subpar performance. Therefore, the development of a holistic controller that can safely coordinate the entire body is necessary to successfully accomplish these tasks while respecting the robot's dynamics. Safety considerations are of utmost importance when deploying complex robots in real-world scenarios. Even if a desired task can be controlled, poor performance may result if safety measures are not adequately taken into account. For instance, a non-safe task-space controller may successfully track a desired swing foot pose of a humanoid robot, but it may fail to check if any leg joints are approaching mechanical limits or if the robot is at risk of self-collision. By incorporating a safety layer, the controller explicitly verifies and enforces control solutions that prioritize safety.
+
+*This work was supported in part by the National Science Foundation under grant FRR-21441568.
+
+1 Mechanical and Aerospace Engineering, Ohio State University, Columbus, OH, USA. (paredescauna.1, hereid.1)@osu.edu.
+
+Fig. 1. The humanoid robot Digit performs different tasks involving CoM motion, torso orientation, and arm movements using our proposed safe whole body task space control.
+
+<!-- image -->
+
+Safety-critical control systems has been extensively studied using barrier certificates [1], [2], which are defined by state-dependent sets described by a function that must remain positive. By appropriately restricting the controller action, a control algorithm can ensure that this safe set remains invariant. Recent research has introduced the concept of Control Barrier Functions (CBFs) within the context of Lyapunov Theory [3] and optimization [4], [5] to express safety certificates. Notably, the formulation of Exponential Control Barrier Functions (ECBF) has been a significant advancement, as it allows safety constraints to have arbitrarily high relative degrees, making it less restrictive for realworld applications as it enables to go beyond geometrical constraints [6], [7]. Leveraging a non-linear controller within an optimization framework becomes advantageous when incorporating ECBFs, as it enables the restructuring of the controller based on recent developments in task-space control. Task-space control has been extensively studied using both model-based inverse dynamics [8] and model-free inverse kinematics approaches [9]. The use of inverse dynamics offers the advantage of considering model constraints such as contact constraints, friction cone, zero moment point, and torque limits. However, controlling bipedal systems presents challenges due to their intrinsic under-actuation and floating base. Nakanishi et al. [10] proposed a closed-form control solution that relies on estimating contact forces to obtain the constrained dynamics and the Jacobian projection of the task space objectives. An improved version of this controller [11] utilizes orthogonal decomposition to work in a reduced dimensional space and avoids the need for estimating contact forces. However, these formulations do not explicitly incorporate contact wrenches, limiting their ability to introduce additional relevant constraints such as the zero moment point or friction.
+
+To effectively address these constraints, it is crucial to explicitly consider the contact wrenches in an inverse dynamics controller that leverages the dynamics of user-defined general task outputs. Herzog et al. [12] proposed a QuadraticProgramming (QP) formulation that incorporates the robot dynamics and treats the contact wrenches as decision variables. This QP-based approach offers advantages in terms of reducing the complexity of matrix operations and enabling the handling of multiple constraints. Building upon this foundation, Reher et al. [13] introduced a similar QP optimization structure to construct a Control Lyapunov Function (CLF) that respects constraints such as the zero moment point (ZMP), contact, and friction cone. Their formulation utilized acceleration, torque, and constraint wrenches as optimization variables, providing enhanced control capabilities over these variables. However, the inverse dynamics formulations in these works do not consider safety. The work of [7] provides a formulation of whole-body control with a Control Barrier Function (CBF) specifically designed for position-based objectives. On the other hand, Nguyen et al. [14], [15] presented a QP-based controller that incorporates an Exponential Control Barrier Function (ECBF), a formulation that extends the CBF by the consideration of general state-space-based safety sets with arbitrary relative-degree. They employed a CLFbased controller and explicitly constructed an ECBF to constrain footstep placements on stepping stones. However, their optimization formulation utilized motor torques as decision variables, resulting in increased numerical complexity due to the inversion of the mass matrix. Moreover, the formulation does not consider friction or ZMP constraints important for more realistic implementations. To overcome this challenge, we extend the work of Reher et al. [13] by reformulating the barrier functions as an acceleration-based exponential control barrier function (A-ECBF). This novel formulation avoids explicit dependence on torques and effectively alleviates the numerical cost associated with the QP formulation.
+
+The main contribution of this paper is the development of a novel Quadratic-Programming (QP)-based safe inverse dynamics controller that offers several key advantages:
+
+- 1) Avoidance of mass matrix inversions: Building upon previous work on inverse dynamic formulations, we leverage a numerically efficient program that explicitly considers joint accelerations, torques, and wrenches as decision variables. This approach eliminates the need for computationally expensive mass matrix inversions.
+- 2) Handling of kinematics constraints: Our QP-based inverse dynamics formulation enables the straightforward incorporation of closed-loop kinematics and other essential constraints, such as contacts, zero moment point (ZMP), and the friction cone. This flexibility allows for more accurate and realistic modeling of the robot's behavior.
+- 3) Enforcement of safety through acceleration-based exponential control barrier functions (A-ECBFs): To ensure the safety of the system, we construct an exponential control barrier function that guarantees the invariant behavior of a predefined safe set. By formulating this safety certificate as an inequality constraint dependent solely on joint accelerations, we exploit the inherent structure of the controller formulation.
+- 4) Application of safe control actions to a 3D humanoid robot: We demonstrate the performance and effectiveness of our controller through extensive simulation and hardware experiments on a 3D humanoid robot. These experiments validate the controller's ability to achieve desired tasks while maintaining safety.
+
+Fig. 2. A humanoid robot with floating base is described by its internal body coordinates qb and its floating coordinates qe as shown in the left. Furthermore, this robot experiences contact wrenches and forces due to the closed chain mechanisms as seen in the right.
+
+<!-- image -->
+
+The remainder of the paper is organized as follows. Section II presents the mathematical modeling of humanoid robots with floating base coordinates, contacts, closedloop mechanisms, and critical dynamics constraints. In Section III, we present a task-space inverse dynamics control algorithm that is expressed as a quadratic program, followed by formulating an Acceleration-based Exponential Control Barrier Function that can be naturally included in the inverse dynamics formulation. In Section IV, we showcase the effectiveness of our whole body controller and its safety enforcement with various tasks for the 3D bipedal robot, Digit (Fig. 1). This section provides empirical evidence of the controller's performance and demonstrates its ability to handle complex tasks.
+
+## II. HUMANOID DYNAMICS WITH CONSTRAINTS
+
+The kinematics of humanoid robots can be described by a floating frame fixed to a base point, introducing respective floating coordinates qe ∈ SE ( 3 ) , as shown in Fig. 2, and the body coordinates describe the relative motion of its joints.
+
+Fig. 3. The closed loop kinematics on the right can be expressed as the open kinematic chain on the left with a holonomic constraint that enforces nAB constant. This constraint will relate the actuated torque τ 1 to the passive joint torque τ 4.
+
+<!-- image -->
+
+For a robot with nb joints, we represent body coordinates as qb ∈ R n b . The configuration space Q of a legged robot with a floating base, such as Digit as shown in Fig. 2, then can be represented by q = [ q /latticetop e , q /latticetop b ] /latticetop ∈ Q = R n with n = nb + 6 being the total degrees of freedom of the robot. The dynamics of the multi-body system can be described by the Euler Lagrangian equations of motion [16]:
+
+<!-- formula-not-decoded -->
+
+where M ( q ) ∈ R n × n , C ( q , ˙ q ) ∈ R n × n , and G ( q ) ∈ R n are inertia matrix, Coriolis matrix, and gravity vector, respectively, B ∈ R n × m is the torque distribution matrix that maps the torque of the m actuators u ∈ U ⊂ R m , λ ∈ R n h is the collection of constraint wrenches or external forces, and J ( q ) ∈ R n h × n its respective Jacobian matrix. Constraint wrenches are due to kinematic closed-chains, or contacts, as illustrated in Fig. 2 and discussed below.
+
+## A. Closed kinematic chain constraints
+
+A closed kinematic chain, such as the four-bar linkage shown in Fig. 3, is popular in legged robot designs. However, many existing controllers do not explicitly address constraints associated with closed-chain kinematics [17]. To model a closed kinematic chain without resolving the constrained dynamics, we can virtually disconnect each closing link and use their lengths given by nk ( q ) ∈ R , ∀ k ∈ Ω chain (e.g., nAB in Fig. 3) to construct appropriate holonomic constraints that enforce ¨ nk ( q , ˙ q , ¨ q ) = 0 , ∀ k ∈ Ω chain [18]. Note that typically the inertial effects of the connecting rods are neglected as they have a much smaller mass with respect to other links. The collection of such constraints generates,
+
+<!-- formula-not-decoded -->
+
+where, Jchain ( q ) is the jacobian of the collection of the closed kinematic constraints.
+
+## B. Contact constraints
+
+The contact constraints are included whenever the robot must preserve contact with a point or a surface. While such ground contacts are unilateral, they can be modeled as holonomic constraints with additional inequality constraints describing the limitations imposed by friction and the direction of the normal force. Similarly to the closed kinematic constraints, for a set of contacts c ∈ Ω cont , and their respective pose nc ( q ) ∈ R 6 , we enforce its invariance through:
+
+<!-- formula-not-decoded -->
+
+Additionally, to impose friction constraints and avoid slipping we use the pyramidal friction cone approximation [16]. For each contact wrench we can decompose it into forces and moments as /vector λ c = [ λ c f x , λ c f y , λ c f z , λ c mx , λ c my , λ c mz ] T indexed by c ∈ Ω cont . We impose the following constraints that can be expressed in linear form,
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+where µ is the friction coefficient between the feet and the ground, λ c f x , λ c f y , λ c f z represent the linear force components of a contact wrench along x , y , z -axes of the contact frame. In some cases, to avoid rotational slipping, one must limit the normal moment by incorporating a soft-finger contact type:
+
+<!-- formula-not-decoded -->
+
+where γ is the torsional friction coefficient and λ c mz is the rotational moment component of a wrench along the z -axis of the contact frame.
+
+Additional Zero Moment Point (ZMP) constraints should be enforced to prevent tipping over edges [16], [19]. The typical contact cases are single and double support configurations, as seen in Fig. 4. For a series of contacts, we need to project each wrench into a unique frame, for instance, the world frame with an associated global wrench λ w . We can achieve this by applying the adjoint transformation (represented by Adg ) to every single contact wrench to obtain the equivalent contact wrench expressed in the world frame:
+
+<!-- formula-not-decoded -->
+
+where gc → w is the homogeneous transformation matrix of the world frame w.r.t. the contact frame c ∈ Ω cont .
+
+The ZMP is computed as p x zmp = λ w my / λ w f z , p y zmp = -λ w mx / λ w f z and must be inside the support polygon P defined by the contact geometry, as shown in Fig. 4. Thus, the ZMP constraint can be represented as:
+
+<!-- formula-not-decoded -->
+
+where, P is the support region formed by the contact bodies as seen in Fig. 4 for both single support and double support.
+
+## III. SAFE TASK SPACE WHOLE BODY CONTROL VIA CBF-QP
+
+This section presents an inverse dynamics controller based on quadratic programming (QP) that incorporates holonomic constraints arising from contacts and closed chain mechanisms. This approach avoids the need for matrix inversions and the calculation of constrained dynamics, providing
+
+Fig. 4. Typical cases: One contact point on the left and two on the right; in both cases, the wrenches are projected into λ w for ZMP computations.
+
+<!-- image -->
+
+numerical benefits. Subsequently, we introduce our paper's main contribution, which is applying an Exponential Control Barrier Function (ECBF) to ensure the invariance of a safe set. Specifically, we formulate an Acceleration-based ECBF compatible with the whole-body inverse dynamics control as shown in Fig. 5.
+
+## A. Task Space Inverse dynamics
+
+We consider task space outputs y ( t , q ) ∈ R m as positions and orientations of the robot's representative points or reference frames. These outputs can specify the robot's desired behavior, such as moving to a particular position or following a trajectory. Typical outputs may include the center of mass (CoM) position and orientation and the end-effector poses of the robot's arms and legs. For simplicity, we present an output that is of relative degree two, given as:
+
+<!-- formula-not-decoded -->
+
+where, y a ( q ) , y d ( t ) ∈ R m are the actual and desired outputs respectively. Further, the first and second order derivatives of outputs are:
+
+<!-- formula-not-decoded -->
+
+where Jy ( q ) ∈ R m × n is the jacobian of y a ( q ) .
+
+<!-- formula-not-decoded -->
+
+We formulate the inverse dynamics problem as an optimization program using the decision variable X = [ ¨ q T , u T , λ T ] T . Hence, the constrained robot dynamics in (1) - (3) can be rewritten as:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+where J ( q ) = [ Jchain ( q ) Jcont ( q ) ] . To obtain stable output dynamics, we enforce a linear output dynamics ¨ y ( t , q , ˙ q , ¨ q ) = -Kpy ( t , q ) -Kd ˙ y ( t , q , ˙ q ) , which holds true whenever, where, Kp , Kd ∈ R m × m are positive definite gain matrices. We formulate the QP-based inverse dynamics controller as,
+
+<!-- formula-not-decoded -->
+
+where X captures the domain constraints (e.g., torque limits, friction cone, and ZMP constraints) expressed on the optimization variables. We use the regularization term X T Γ X , with Γ &gt; 0 with a weight represented by a diagonal matrix, to avoid high-frequency changes in the optimization variables.
+
+## B. Exponential control barrier functions
+
+To enhance the capabilities of the inverse dynamics control, we introduce safety through the use of Exponential Control Barrier Functions (ECBF) [5]. They ensure the forward invariance of a user-defined safe set. Moreover, we will utilize an acceleration-based formulation of the ECBF (AECBF), which leverages the decision variable X to maintain the inverse dynamics approach's numerical benefits by avoiding the mass matrix's inversion. Throughout the paper, we do not utilize the analytical constrained dynamics. However, we include it here to illustrate the standard derivation of the ECBF and highlight our equivalent approach, A-ECBF, that requires no additional matrix operations.
+
+1) Review of ECBFs: Consider the state x = [ q T , ˙ q T ] T ∈ D ⊂ TQ , where D is an open set of admissible states. By solving analytically the constrained dynamics we can obtain the following state-space representation,
+
+<!-- formula-not-decoded -->
+
+where, f ( x ) ∈ R 2 n , g ( x ) ∈ R 2 n × m and u ∈ R m . A safe region can be defined by,
+
+<!-- formula-not-decoded -->
+
+where h : D → R is a smooth function with relative degree rb , i.e.,
+
+<!-- formula-not-decoded -->
+
+where, L r b f h ( x ) , LgL r b -1 f h ( x ) ∈ R are the respective Lie derivatives of h ( x ) and LgL r -1 f h ( x ) is assumed to be nonzero. We stack the lower derivatives to form the following state,
+
+<!-- formula-not-decoded -->
+
+and construct a linear representation of the dynamics of h ( x ) through the mapping L r b f h ( x ) + LgL r b -1 f h ( x ) u = ν b ,
+
+<!-- formula-not-decoded -->
+
+Next, we need a constraint on ν b such that h ( x ) ≥ 0. Applying the feedback ν b = -K αη b , the trajectory becomes h ( x ) = Cbe ( Fb -GbK α ) t η b ( x 0 ) .
+
+<!-- formula-not-decoded -->
+
+By the comparison lemma, setting ν b ≥ -K αη b implies h ( x ( t )) ≥ Cbe ( Fb -GbK α ) t η b ( x 0 ) .
+
+Definition 1 ( Exponential Control Barrier Function [5]). Given a set C ⊂ D defined as the super-level set of a rb times continuously differentiable function h : D → R , then h is an exponential control barrier function (ECBF) if there exists K α ∈ R 1 × r b such that,
+
+<!-- formula-not-decoded -->
+
+∀ x ∈ Int ( C ) originates h ( x ( t )) ≥ Cbe ( Fb -GbK α t ) η b ( x 0 ) ≥ 0 for h ( x 0 ) ≥ 0 .
+
+The closed loop system ˙ η b =( Fb -GbK α ) η b has a number of rb roots that are dependent on the selection of K α and denoted by pb = -[ p 1 , ..., prb ] . We will construct a family of functions B i : D → R such that,
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+Note that if we choose pi such that B i ( x ) ≥ 0 and pi &gt; 0, then B i -1 ( x ) ≥ 0. However, we only need to guarantee this once, thus B i -1 ( x 0 ) ≥ 0 is enough. This is the basis for the next theorem that is proved in [5].
+
+Theorem 1. [5] Consider the closed loop system ˙ η b = ( Fb -GbK α ) η b . If K α is chosen to enforce its roots pb = -[ p 1 , ..., prb ] to be,
+
+<!-- formula-not-decoded -->
+
+Then, the constraint ν b ≥ -K αη b applied on (20) , renders h ( x ) an ECBF.
+
+2) Formulation of A-ECBFs: In our inverse dynamics formulation, the decision variable X includes the acceleration ¨ q and the control output u , which are related through the system dynamics. We can avoid solving the constrained dynamics by using the accelerations ¨ q instead of u , and the quadratic program can implicitly solve their relationship. We can obtain an alternative expression for the rb derivative of h ( x ) as,
+
+<!-- formula-not-decoded -->
+
+where, F and G are found by choosing the coordinates η = [ h ( x ) , h ( 1 ) ( x ) , ..., h ( r b -1 ) ( x ) ] /latticetop and constructing the following linear system,
+
+<!-- formula-not-decoded -->
+
+Using this expression, we present an equivalent definition of (22), considering joint accelerations and avoiding the explicit solution of the constrained dynamics needed for (16).
+
+Definition 2 ( Acceleration based exponential control barrier function (A-ECBF)). The function h ( x ) is an A-ECBF if there exists K α such that,
+
+<!-- formula-not-decoded -->
+
+∀ x ∈ Int ( C ) originates h ( x ( t )) ≥ Cbe ( Fb -GbK α t ) η b ( x 0 ) ≥ 0 for h ( x 0 ) ≥ 0 .
+
+The design of K α follows the Theorem 1 rationale. Once we have a suitable value for it, we include the constraint (28) into our inverse dynamics controller. In other words, we simply add the A-ECBF certificate as an additional inequality constraint as shown below.
+
+<!-- formula-not-decoded -->
+
+This controller enforces forward invariance of the set C using our equivalent definition of an A-ECBF in the inverse dynamics formula. In systems that start from rest, i.e, x ( t 0 ) = ˙ x ( t 0 ) = 0 we note that Theorem 1 simplifies to pi &gt; 0 , ∀ i = 1 , ..., rb . For second-order systems, it means that K α accepts solutions that form critically damped or overdamped oscillations. It makes the solutions of h ( x ) to avoid zero crossings and maintain h ( x ) ≥ 0.
+
+## IV. SIMULATION AND EXPERIMENTAL RESULTS
+
+We implement the controller in simulation and the robotic hardware using a unique code structure and controller gains. Our test bed is Digit, a 3D bipedal robot with arms, legs, and a torso developed by Agility Robotics. It weighs 45 Kg and has 30 joints with 20 motors. Each leg presents three closed kinematic chains and two spring joints, as seen in Fig. 6.
+
+We consider the springs as rigid joints to simplify the control problem because of their high stiffness. Those spring joints will be considered part of the kinematic constraints (kc). The entire kinematic constraints are defined as nkc = [ n L kc n R kc ] T , where L / R stands for left and right, respectively, and
+
+<!-- formula-not-decoded -->
+
+where, nach is the length of the achilles rod, nrA and nrB are the lengths of the rods connecting to the ankles while qshin
+
+Fig. 5. The safe task-space control framework starts by defining control objectives and safety sets according to the application. The optimization will search a control action in the space of safe solutions.
+
+<!-- image -->
+
+B(q)
+
+Fig. 6. The figure on the left shows the passive joints and the closed chain loops in the robot legs. The figure on the right shows the fist and the base frames.
+
+<!-- image -->
+
+and qheel -spring are the spring joints considered as fixed, as shown in Fig. 6. We parameterize time by τ = t -t 0, where t 0 indicates the starting time of a step. We show the results in both, plots and video 1 , for different whole body motions including walking.
+
+## A. Task: Squatting and bowing
+
+In this case we showcase the whole-body controller without safety constraints. During the Double Support domain, the controlled outputs are:
+
+<!-- formula-not-decoded -->
+
+where, pCoM ∈ R 3 is the position of the center of mass, θ torso ∈ R 3 is the torso orientation expressed in Euler ZYX angles and, qarms ∈ R 8 are the angular positions of the joints on the left and right arm. Note that during this domain, the robot must keep both feet in contact with the ground, i.e., meet the ZMP and friction constraints.
+
+We test two continuous actions: (1) a squatting motion by specifying a sinusoidal reference to the CoM's height and (2)
+
+Fig. 7. The squatting motion starts at t = 10 s for both simulation and experiment. The blue lines are the actual outputs, and the red dashed lines represent the reference trajectories.
+
+<!-- image -->
+
+a bowing motion by commanding the torso pitch to extend and return to its initial pose. The squatting reference is,
+
+<!-- formula-not-decoded -->
+
+During this motion, we keep the torso orientation straight θ d torso = 0 and the arms fixed. Fig. 7 shows the controller's performance in simulation and hardware experiments.
+
+Regarding the bowing motion, we set the following reference for the torso pitch,
+
+<!-- formula-not-decoded -->
+
+and the other tasks are specified as p d CoM = [ 0 0 0 . 95 ] T and the arms fixed. Applying our controller results on the behavior observed in Fig. 8, for the hardware experiment.
+
+## B. Task: Arm motion with height limits
+
+We command an arm trajectory during the Double Support domain, keeping the robot's center of mass and torso orientation fixed and straight. We will focus on the safetycritical feature of the controller by providing an A-ECBF for the fist height with respect to the base frame, as seen in Fig. 6. To illustrate the effect of the A-ECBF, we will command
+
+Fig. 8. Tracking the torso orientation while realizing a bowing movement between 10-14 seconds.
+
+<!-- image -->
+
+both arms, left and right, with the same reference but only equip the left fist with the safety certificate. We consider an imaginary safe set, defined as,
+
+<!-- formula-not-decoded -->
+
+where, p L z ( q ) is the z-position of the fist of the left arm w.r.t to the torso base, as seen in Fig. 9. Since h ( x ) is relative degree two, the A-ECBF constraint takes the form of Jpz ¨ q + ˙ Jpz ˙ q ≥-K αη . Moreover,
+
+<!-- formula-not-decoded -->
+
+where, Jpz = -∂ p L z ∂ q and η =[ -p L z -0 . 195 , -˙ p L z ] /latticetop . We design K α such that the roots of ˙ η =( F -GK α ) η follow Theorem 1 . The output references for both left and right arm are q d arm = [ q d armL , q d armR ] T with,
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+Applying the QP-based controller with the A-ECBF results on the fist motions shown in Fig. 9 in hardware. We note that the right fist violates the safe zone to reach its desired target, while the left fist avoids those trajectories but will try to reach the other objectives. Fig. 10 shows the tracking of the other objectives.
+
+## C. Task: Walking with the A-LIP template model
+
+In the following tasks, we use a single support domain that will enable bipedal walking. We use the Angular Momentumbased Linear Inverted Pendulum (ALIP) model to generate stable walking patterns [20]. In the ALIP, the support ankle (pitch and roll) is rendered passive to predict the angular momentum at the end of the step. This strategy allows us to plan for stabilizing foot positioning targets ( ux , uy ) and the feet height profile to impact at a specified period T . A complete description of the planner can be found at [20], [21]. The swing foot outputs are defined as:
+
+<!-- formula-not-decoded -->
+
+Fig. 9. The trajectory of the left fist and right fist. The left fist is constrained by an A-ECBF that prevents it from crossing the safe threshold, while the right fist is not constrained and crosses it at t = 30 s during the hardware experiments.
+
+<!-- image -->
+
+Fig. 10. Arm joint tracking during the hardware experiment. The blue lines represent the actual joint positions, and the red dashed lines show the desired trajectories.
+
+<!-- image -->
+
+where s =( 1 -e -5 τ T ) is an smoothing factor. The other ALIP requirements are: the CoM height is constant ( H = 0 . 9), the orientation of the torso is kept vertical, and the swing foot remains flat. Hence, the actual and desired outputs are defined as:
+
+<!-- formula-not-decoded -->
+
+The controller's application over the outputs defined in (38) produces a stable gait with an average forward speed of 0.2 m/s. The task space tracking for the position of the outputs is summarized in Fig. 11.
+
+## D. Task: Collision avoidance
+
+Continuing with the ALIP based gait, we show the effect of an instantaneous ( δ t = 0 . 15 s ) lateral external force at the torso with magnitude Fext = -30 N . This produces a leg motion that leads to the collision between the legs, as seen in Fig. 12. However, by providing collision safety through an A-ECBF, we can avoid this event and recover the balance. The safe set is defined by,
+
+<!-- formula-not-decoded -->
+
+Fig. 11. Task space tracking under the ALIP planner in the Mujoco simulator. We note a good tracking performance during the walking gait, and a similar performance is observed for the orientation tasks.
+
+<!-- image -->
+
+Fig. 12. During the Mujoco simulation, we observe the swing foot tracking in the y-direction. The upper plot has an A-ECBF, while the lower does not. The foot placement reference (red dashed line), crosses the safe region in both plots. However, the A-ECBF prevents the foot from entering it. The yellow circles show the collision events.
+
+<!-- image -->
+
+where, ysw ( q ) is the y-position of the swing foot w.r.t the support foot. By enforcing the constraint, the swing foot will maintain a distance margin that will avoid collisions. Fig. 12 shows that the reference provided by the ALIP planner crosses the safety region, but the A-ECBF disallows the foot to enter that region.
+
+## V. CONCLUSIONS
+
+The whole body controller presented realizes stable motions that respect its closed chain kinematic, ZMP, and other physical constraints. We achieved fast squatting and bowing movements that show the controller's capabilities during double support. We also conducted walking experiments with 0.2m/s of speed and a stepping time of T = 0 . 35 s to show fast single support events handling. Furthermore, we showed the formulation of the A-ECBF to provide control safety. This safe controller has the numerical benefit of expressing the dynamics and the constraints separately and avoiding computation of the constrained dynamics. The results of the A-ECBF were applied to both the arms and the legs to show its effectiveness in different scenarios. In general, the results show similar performance between simulation and hardware experiments regarding tracking and safety.
+
+## REFERENCES
+
+- [1] S. Prajna, 'Barrier certificates for nonlinear model validation,' Automatica , vol. 42, no. 1, pp. 117-126, 2006.
+- [2] S. Prajna and A. Jadbabaie, 'Safety verification of hybrid systems using barrier certificates,' in International Workshop on Hybrid Systems: Computation and Control . Springer, 2004, pp. 477-492.
+- [3] S. Hsu, X. Xu, and A. D. Ames, 'Control barrier function based quadratic programs with application to bipedal robotic walking,' in American Control Conference, ACC 2015, Chicago, IL, USA, July 13, 2015 , IEEE. IEEE, 2015, pp. 4542-4548.
+- [4] Q. Nguyen and K. Sreenath, 'Exponential control barrier functions for enforcing high relative-degree safety-critical constraints,' in 2016 American Control Conference (ACC) . IEEE, 2016, pp. 322-328.
+- [5] A. D. Ames, S. Coogan, M. Egerstedt, G. Notomista, K. Sreenath, and P. Tabuada, 'Control barrier functions: Theory and applications,' in 2019 18th European Control Conference (ECC) . IEEE, 2019, pp. 3420-3431.
+- [6] A. Del Prete, 'Joint position and velocity bounds in discrete-time acceleration/torque control of robot manipulators,' IEEE Robotics and Automation Letters , vol. 3, no. 1, pp. 281-288, 2017.
+- [7] C. Khazoom, D. Gonzalez-Diaz, Y. Ding, and S. Kim, 'Humanoid self-collision avoidance using whole-body control with control barrier functions,' in 2022 IEEE-RAS 21st International Conference on Humanoid Robots (Humanoids) . IEEE, 2022, pp. 558-565.
+- [8] J. Nakanishi, R. Cory, M. Mistry, J. Peters, and S. Schaal, 'Operational space control: A theoretical and empirical comparison,' The International Journal of Robotics Research , vol. 27, no. 6, pp. 737757, 2008.
+- [9] V. Paredes and A. Hereid, 'Resolved motion control for 3d underactuated bipedal walking using linear inverted pendulum dynamics and neural adaptation,' arXiv preprint arXiv:2208.01786 , 2022.
+- [10] J. Nakanishi, M. Mistry, and S. Schaal, 'Inverse dynamics control with floating base and constraints,' in Proceedings 2007 IEEE International Conference on Robotics and Automation . IEEE, 2007, pp. 1942-1947.
+- [11] M. Mistry, J. Buchli, and S. Schaal, 'Inverse dynamics control of floating base systems using orthogonal decomposition,' in 2010 IEEE international conference on robotics and automation . IEEE, 2010, pp. 3406-3412.
+- [12] A. Herzog, L. Righetti, F. Grimminger, P. Pastor, and S. Schaal, 'Balancing experiments on a torque-controlled humanoid with hierarchical inverse dynamics,' in Proc. IEEE/RSJ Int. Conf. Intelligent Robots and Systems , Sept. 2014, pp. 981-988.
+- [13] J. Reher, C. Kann, and A. D. Ames, 'An inverse dynamics approach to control lyapunov functions,' in 2020 American Control Conference (ACC) . IEEE, 2020, pp. 2444-2451.
+- [14] Q. Nguyen, A. Hereid, K. Sreenath, J. W. Grizzle, and A. D. Ames, '3D dynamic walking on stepping stones with control barrier functions,' in Proc. IEEE 55 th Conf. Decision and Control (CDC) . Las Vegas, NV: IEEE, Dec. 2016, pp. 827-834.
+- [15] Q. Nguyen and K. Sreenath, 'Safety-critical control for dynamical bipedal walking with precise footstep placement,' IFACPapersOnLine , vol. 48, no. 27, pp. 147-154, 2015.
+- [16] J. W. Grizzle, C. Chevallereau, R. W. Sinnet, and A. D. Ames, 'Models, feedback control, and open problems of 3D bipedal robotic walking,' Automatica , vol. 50, no. 8, pp. 1955-1988, 2014.
+- [17] F. L. Moro and L. Sentis, 'Whole-body control of humanoid robots,' Humanoid Robotics: A Reference , Jan. 2018.
+- [18] J. Reher and A. D. Ames, 'Control lyapunov functions for compliant hybrid zero dynamic walking,' arXiv preprint arXiv:2107.04241 , 2021.
+- [19] M. Vukobratovi´ c and B. Borovac, 'Zero-moment point: thirty five years of its life,' International Journal of Humanoid Robotics , vol. 1, no. 01, pp. 157-173, 2004.
+- [20] Y. Gong and J. W. Grizzle, 'Zero Dynamics, Pendulum Models, and Angular Momentum in Feedback Control of Bipedal Locomotion,' Journal of Dynamic Systems, Measurement, and Control , vol. 144, no. 12, 10 2022, 121006.
+- [21] G. Gibson, O. Dosunmu-Ogunbi, Y. Gong, and J. Grizzle, 'Terrainadaptive, alip-based bipedal locomotion controller via model predictive control and virtual constraints,' in 2022 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , 2022, pp. 67246731.

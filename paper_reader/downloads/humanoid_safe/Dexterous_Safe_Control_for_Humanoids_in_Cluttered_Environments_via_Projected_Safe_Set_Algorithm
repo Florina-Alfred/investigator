@@ -1,0 +1,432 @@
+## Dexterous Safe Control for Humanoids in Cluttered Environments via Projected Safe Set Algorithm
+
+Rui Chen, Yifan Sun, and Changliu Liu Robotics Institute, Carnegie Mellon University { ruic3, yifansu2, cliu6 } @andrew.cmu.edu
+
+(a)
+
+(b)
+
+Figure 1: Application of dexterous safe control for humanoids in cluttered environments. (a) A safe teleoperation task where the Unitree G1 humanoid mirrors Apple Vision Pro (AVP)-tracked human arm motions to manipulate objects inside a cabinet while avoiding both obstacle and self-collisions. (b)-(1) p-SSA blocks excessive squeezing near the cabinet (frames 2-3) and allows safe input in frame 4. Obstacles triggering p-SSA intervention are highlighted in blue in AVP view. (b)-(2) p-SSA prevents collisions when both arms are inside the cabinet. This poses a more complex problem due to multiple concurrent safety constraints within a confined space. (c) Simulated goal-reaching (green) with collision avoidance with multiple obstacles (gray) via p-SSA.
+
+<!-- image -->
+
+Abstract -It is critical to ensure safety for humanoid robots in real-world applications without compromising performance. In this paper, we consider the problem of dexterous safety, featuring limb-level geometry constraints for avoiding both external and self-collisions in cluttered environments. Compared to safety with simplified bounding geometries in sprase environments, dexterous safety produces numerous constraints which often lead to infeasible constraint sets when solving for safe robot control. To address this issue, we propose Projected Safe Set Algorithm (p-SSA), an extension of classical safe control algorithms to multi-constraint cases. p-SSA relaxes conflicting constraints in a principled manner, minimizing safety violations to guarantee feasible robot control. We verify our approach in simulation and on a real Unitree G1 humanoid robot performing complex collision avoidance tasks. Results show that p-SSA enables the humanoid to operate robustly in challenging situations with minimal safety violations and directly generalizes to various tasks with zero parameter tuning.
+
+## I. INTRODUCTION
+
+Humanoid robots are increasingly being deployed in the real world. Their highly articulated physical structures grant them remarkable dexterity to operate even in cluttered environments; those environments are commonly seen in tasks from factory automation to service and healthcare applications. Yet, as their capabilities grow, ensuring the safety of the humanoid and its environment becomes both critical and difficult. A common approach to collision avoidance is to simplify the robot's geometry-for instance, by wrapping the entire body using a single bounding cylinder [28, 12]. While such geometric reductions enable straightforward algorithms and help in early proof-of-concept implementations, they tend to be overly conservative for humanoid robots, severely restricting feasible motion and task performance. Realizing the full potential of humanoids calls for more precise and fine-grained modeling of the geometry of both the robot and the environment, especially for tasks involving close-proximity interactions. We refer to the problem of enforcing safety under limb-level geometry modeling as dexterous safety . In this paper, we aim to address dexterous safety in cluttered environments without compromising performance.
+
+Regarding approaches to safe control, researchers have broadly pursued two classes of methods: indirect (modelbased) and direct (model-free). Indirect approaches such as safe set algorithms (SSA) [15, 5], control barrier functions (CBFs) [2, 27], and Hamilton-Jacobi (HJ) reachability [7] explicitly model the robot dynamics and derive safe control laws accordingly. They allow interpretable decompositions of objectives and constraints and can be adapted to modified problems (e.g., changed safety criteria) without a fine-tuning process. In contrast, direct approaches such safe reinforcement learning bypass robot modeling and incorporate tasks with constraints into a single optimization framework. Despite their promise, direct methods often require extensive training for high-dimensional problems and retraining when new constraints are introduced. This paper focuses on indirect methods to accommodate the high dimensionality and flexibility of dexterous safety in cluttered environments.
+
+Indirect methods are normally energy function-based approaches [26] that (a) synthesize an energy function that quantifies safety and (b) derive a control constraint from that energy function to enforce safety. The difficulty of applying indirect methods can be characterized by two key aspects: the granularity of robot geometry modeling and the distribution of obstacles. The robot geometry can be modeled either coarsely using a single convex bounding shape such as a box or cylinder (i.e., single-body ), or at limb level with each movable link enclosed with an independent shape (i.e., multi-body ). The surrounding obstacles can be distributed either sparsely such that the robot deals with one obstacle at a time, or densely such that the robot has to jointly consider multiple potential collisions. Prior works mostly focus on the simplest setting with a single rigid body in sparse environments [28, 12, 22, 21, 19, 29, 8]. Some work could handle singlebody safety in dense environments [4, 9, 31] by invoking one safety constraint for each surrounding obstacle. However, these approaches are limited to simple 2D problems and do not come with any safety guarantees. Regarding multi-body safety, existing literature mostly assumes sparse environments and solves these problems by reducing them to maximizing the closest distance from the robot to the obstacle which could be regulated using one single energy function [17, 14, 16].
+
+Our problem of dexterous safety for humanoids in cluttered environments falls into the most difficult category: multi-body safety with densely distributed obstacles. In all three cases above with either single body or sparse obstacles, the safety is quantified with respect to one point on the robot body. In the case of single-body safety, it is quantified with respect to the center of the robot; in the case of multi-body safety, it is quantified with respect to the closest point to the obstacle. Hence only one energy function is needed for the robot. For relatively sparse environments with high safe control frequency, this strategy works for multi-body safety as the clearance is high and safety hazards could be mitigated in time. However, the complex interaction between multiple robot links and multiple obstacles in proximity can hardly be treated in the same way. That is because some motion that decreases this one energy function (e.g., by moving the closest point away from the obstacle) may result in another part on the robot body immediately colliding with another obstacle. To the best of the authors' knowledge, there is no existing work that can reliably synthesize one single energy function to achieve high safety performance when multiple collisions with multi-body robots are possible. We hypothesize that multi-body safety in dense environments is indeed a multi-objective optimization problem which can hardly be captured by a single energy function as one single performance index. Hence, we must deploy multiple energy functions to more precisely capture the safety. With each energy function leading to a control constraint, we resort to multi-constraint safe control approaches in this paper.
+
+The aforementioned safety approaches (SSA, CBF, etc.) come with nice theoretical safety guarantees such as forward invariance [15, 5, 2]. They often derive a linear safe control constraint with a quadratic objective (e.g., nominal control tracking), forming quadratic programming (QP) problems to solve online. In our case, this naturally extends to a QP with multiple constraints. The solution (if it exists) to this QP would satisfy each control constraint and inherit all safety guarantees of the single-constraint version. However, as will be shown in this paper, multi-constraint QPs can frequently become infeasible either due to inherently/physically infeasible problems or incompatible energy functions (e.g., derived control constraints), unless certain safety requirements are relaxed (e.g., temporarily allowing contact). This is because, in dexterous safety, we need to carefully constrain the motion of each rigid body in the robot kinematics chain, which is very different from safety for a single rigid body. That leads to a highly restricted solution space with or without bounded control. Several previous works consider multi-constraint cases but without a focus on QP feasibility, either due to inherently consistent constraints describing non-trivial connected and closed safe zones [10, 20] or large actuation limits [13]. There are works explicitly avoiding QP infeasibility via Safety Index Synthesis but only focus on a single safety constraint, mostly with problem dimensions no more than five [30, 5, 6, 18]. [3] composes multiple constraints into a feasible controller but suffers poor scalability; it only shows success on a fourdimensional problem with two constraints, which takes over 1000 seconds to compute. In the task to be considered in this paper, we model a 29-DoF Unitree G1 humanoid with 19 collision volumes, with more than 10 obstacles in proximity at a time in cluttered environments. Considering self-collision, our QP contains more than 200 constraints in dexterous safety tasks. There does not exist any method that can synthesize multiple compatible energy functions to make the QP persistently feasible for high-dimensional problems like ours.
+
+In summary, for dexterous safety for humanoids in cluttered environments, a single energy function can hardly handle multiple safety objectives, while no existing approach could synthesize multiple energy functions that are compatible to guarantee feasible controls. We argue that under the currently available theoretical tools, the closest to what we desire is to design multiple energy functions for each collision pair of interest and force a multi-constrained QP. Instead of aiming for guarantees, we desire a practical method that can be quickly deployed on humanoids with minimal violations of the control constraints when the QP becomes infeasible , either due to inherently infeasible situations or incompatible energy functions. To this end, we propose the Relaxed Safe Set Algorithm (r-SSA), which relaxes infeasible control constraints with weighted slack regularization. We then introduce the Projected Safe Set Algorithm (p-SSA), which improves over r-SSA by removing parameter tuning via decoupled optimization for feasibility and task objectives. Validation in both simulation and hardware shows that r-SSA can readily compute safe control in challenging dexterous safety tasks with several hundreds of constraints. At the same time, p-SSA gains top performance across a variety of tasks with zero parameter tuning. Our contributions can be summarized as follows.
+
+- We introduce a novel task of dexterous safety in cluttered environments and analyze the challenges faced by safe control approaches regarding infeasibility from multiple sources.
+- We propose the Projected Safe Set Algorithm (p-SSA), a novel safe control method for dexterous safety that relaxes conflicting control constraints with minimal violations.
+- We compare p-SSA to baseline methods in simulated experiments and show top balance between performance and safety across various tasks without parameter tuning.
+- We verify p-SSA on a Unitree G1 humanoid robot in challenging safe tele-operation tasks.
+
+The rest of the paper is organized as follows. Section II reviews related indirect safe control approaches. Section III formulates the dexterous safe control problem and shows the conditions under which infeasibility arises. Section IV presents r-SSA and p-SSA to address infeasible safe control constraints. In Section V, we present simulation results and hardware demonstrations of dexterous safety, followed by limitations in Section VI and conclusions in Section VII.
+
+## II. RELATED WORKS
+
+In this section, we review existing works that address safety in robot control in indirect (model-based) fashion. Indirect approaches require explicitly modeled robot dynamics and derive safe control laws according to safety specifications.
+
+Indirect safe control backbones include safe set algorithms (SSA) [15, 5], control barrier functions (CBFs) [2, 27], and Hamilton-Jacobi (HJ) reachability [7]. While being different in the composition of safe control laws, all the above approaches quantifies safety using an energy function [26]. With modeled system dynamics, optimization-based safe control laws are derived to drive the energy function below (or above if negating the sign) a critical level, satisfying Lyapunov-like conditions which guarantees invariance within a safe set. In the past decade, indirect safe control methods have been applied to a wide range of applications such as safe quadruped navigation [28, 12, 19], safe human-robot interaction [17, 14, 21, 16], safe learning [29], locomotion [8], and high-speed drones [22]. Prior work also studies more general settings with timevarying factors [11, 6], model uncertainty [24, 9], and model mismatch [23]. All the above works only consider a single safety constraint, making the optimization for safe control normally feasible given adequate control limits. In dexterous safety in cluttered environments, however, we often need multiple safety constraints to fully capture the safety conditions which also make the optimization sometimes infeasible. As mentioned in Section I, there is not existing work that handles such tasks with feasibility guarantees. In a cluttered dynamic environment, there may also exist situations that are physically impossible for the humanoid to escape from (e.g., trapped in a crowd of people). Prior work usually ignore these situations. In those cases, the question is indeed not to satisfy the safety specification anymore, but how to achieve minimal violations. With minimally relaxed control constraints, our approaches automatically fulfill that purpose as well.
+
+## III. DEXTEROUS SAFETY FOR ARTICULATED ROBOTS
+
+In this section, we will formulate the problem of dexterous safety for articulated robots such as humanoids. We first introduce preliminaries, including system modeling, safety specification, and basic indirect safe control approaches that provide theoretical guarantees. Then, we formulate dexterous safety control where the robot interacts with the environment under multiple safety constraints.
+
+## A. Safe Control Preliminaries
+
+a) Robot Dynamics: We consider control-affine robot dynamics with bounded control. Let x ∈ X ⊂ R N x be the system state and u ∈ U be the control input. Let U := { u ∈ R N u | u -≤ u ≤ u + } where u -and u + are the lower and upper control limit respectively. The dynamics is then given by
+
+<!-- formula-not-decoded -->
+
+where f : R N x ↦→ R N x and g : R N x ↦→ R N x × N u are both locally Lipschitz continuous.
+
+b) Constrained Robot Tasks: Let J denote an arbitrary objective function to be minimized by the robot. For instance, J may measure the relative distance to some goal location in navigation tasks. The robot should also satisfy some given constraint by staying within X S (i.e., spec set ), a subset of the state space X . X S is assumed to be the zero sublevel set of some piecewise smooth energy function ϕ 0 := X ↦→ R , i.e., X S := { x ∈ X | ϕ 0 ( x ) ≤ 0 } . Both X S and ϕ 0 are task specific. For instance, ϕ 0 = d min -d keeps the relative distance d to an obstacle above d min, while ϕ 0 = ∥ ˆ z -[0 , 0 , 1] ⊤ ∥ 2 -ϵ keeps the z-axis of the robot upright up to an error of ϵ . Hence, we are interested in the following constrained task
+
+<!-- formula-not-decoded -->
+
+c) Safe Control Backbone: (2) has been studied by a broad range of literature on indirect safe control methods such as the safe set algorithm (SSA) [15] and control barrier functions (CBF) [1]. Both SSA and CBF derive safe control laws to restrict ˙ ϕ 0 following Lyapunov-like conditions and render a safe set X safe ⊆ X S forward invariant. Namely, if the state x is already within X safe , it should never leave that set, and consequently, stay within X S . In some cases, control u does not appear in ˙ ϕ 0 (e.g., ˙ ϕ 0 = -˙ d does not depend on the acceleration input for a second-order system), preventing the control input from driving the system to safety. To solve that issue, the safe set algorithm (SSA) [15] provides a systematic approach to design an alternative energy function ϕ to handle general relative degrees ( &gt; 1 ) between ϕ 0 and the control. SSA designs a continuous and piece-wise smooth energy function ϕ := X ↦→ R (a.k.a. the safety index ). The general form of an n th ( n ≥ 0 ) order safety index ϕ is given as ϕ = (1 + a 1 s )(1 + a 2 s ) . . . (1 + a n s ) ϕ 0 where s is the differentiation operator. ϕ should satisfy that (a) the roots of the characteristic equation ∏ n i =1 (1+ a i s ) = 0 are all negative real (to avoid overshooting of ϕ 0 ), (b) ϕ ( n ) 0 has relative degree one to the control input. ϕ is alternatively expanded to
+
+<!-- formula-not-decoded -->
+
+where ϕ ( i ) 0 is the i th time derivative of ϕ 0 . Given ϕ , SSA derives the following control constraint:
+
+<!-- formula-not-decoded -->
+
+for some constant η &gt; 0 . With that, (2) becomes
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+Solving the above optimization yields safe control u safe that enforces the safety constraint, i.e., ϕ 0 ≤ 0 [15, 5]. Notably, CBF also handles general relative degree between ϕ 0 and the control [25] and yields a similar constrained control problem to (5). In this paper, we focus on SSA-based approaches without loss of generality, since our contributions are in fact compatible with a family of energy-based safe controllers [26], including but not limited to SSA and CBF.
+
+## B. Dexterous Safety
+
+(5) provides a principled approach to enforce a single constraint ϕ 0 under input limits U . As discussed in Section I, a single ϕ 0 can rarely suffice for dexterous safety in cluttered environments. Hence, we consider one constraint for each robot body and obstacle pair. We will end up with a set of M constraints, with ϕ 0 ,i being the energy function for the i th ( i ∈ [ M ]) collision pair and X S ,i the corresponding spec set. Let ϕ i be the corresponding n th order safety index for ϕ 0 ,i similar to (3), (5) can be naturally extended to a multiconstraint version:
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+where ϕ := [ ϕ 1 , ϕ 2 , . . . , ϕ M ] ⊤ and η := [ η 1 , η 2 , . . . , η M ] ⊤ , η i &gt; 0 . If (6) can be solved at all times, some safe set X safe ,i ⊆ X S ,i will be rendered forward invariant for each constraint i . Then, all constraints are enforced and our problem is well solved. However, for dexterous safety in cluttered environments, (6) can easily be infeasible, as will be explained next, making our problem particularly challenging.
+
+Without loss of generality, we assume J to be a quadratic objective. Such an assumption makes the safe control problem a quadratic programming (QP) which can be efficiently solved by off-the-shelf solvers. In the rest of this paper, we refer to safe control problems like (5) and (6) as 'QP' for simplicity.
+
+## C. Infeasible Safe Control Problems
+
+To analyze the feasibility of multi-constraint QPs, we first see how the single-constraint QP case works. (5) is feasible when there exists a control within U to reduce positive ϕ values for all states in X . This objective can normally be achieved by properly selecting k i coefficients in (3) via Safety Index Synthesis (SIS) [30, 5], formally given by Problem 1.
+
+Problem 1 (Safety Index Synthesis) . Find safety index as ϕ := ϕ 0 + ∑ n i =1 k i ϕ ( i ) 0 with parameter θ ∈ Θ := { [ k 1 , k 2 , . . . , k n ] | k i ∈ R , k i ≥ 0 , ∀ i } , such that
+
+<!-- formula-not-decoded -->
+
+SIS is non-trivial to solve since the condition in (7) must hold for a continuous state space, leading to an infinite number of constraints. In the literature, SIS has been solved via sumof-square programming [30, 5] which is already expensive for single-constraint cases, and normally guarantees QP feasibility only in restricted state, control, and task spaces. Notably, the synthesis of a single feasible energy function ϕ primarily concerns about the compatibility between the control constraint (5b) and the control limits (5c), since single-constraint QPs with unbounded control are always feasible [15]. If there are multiple energy functions { ϕ i } (more than 200 in our case), SIS needs to additionally handle potential inconsistencies within ϕ i 's themselves, which is extremely challenging. SIS approaches that handle such problems are not found in the literature yet.
+
+In this paper, we argue that, it is intractable to make (6) or any similar formulations always feasible for dexterous safety in cluttered environments under actuation bounds. To help illustrations, we explain possible infeasibility of three types: inherent infeasibility, method infeasibility, and kinematics infeasibility (see fig. 2).
+
+- a) Inherent Infeasibility: In cluttered environments with dynamic obstacles, there can be cases where collisions are physically inevitable. For instance, when an obstacle moves towards the base of a humanoid that is already unable to move due to other constraints (see fig. 2a), there is no control that can prevent collisions, making (6) infeasible. Such inherent infeasibility can hardly be avoided without restricting the operation conditions of humanoids.
+- b) Method Infeasibility: Since each ϕ i in (6b) concerns a robot body and obstacle pair, different ϕ i 's may generate conflicts in some cases. Consider the collision avoidance between the humanoid wrist and two planar obstacles. One can construct an energy function for each wrist-obstacle pair, e.g., ϕ i = d min -d i where d i is the distance from the surface of the wrist to plane i for i = 1 , 2 . According to (6b), the corresponding control constraints will be ˙ ϕ i = -˙ d i = -v i ≤ -η i ⇒ v i ≥ η i which simply constrains the wrist to move away from the plane with at least η i velocity ( η i &gt; 0 ) when d i ≤ d min . Such design is mostly effective assuming accurate velocity tracking. However, in some cases, even those two control constraints may not be compatible. For example, when the humanoid operates between two planes parallel to each other (e.g., when manipulating objects in shelves) with a total distance to both sides d 1 + d 2 less than d min , both ϕ 1 and ϕ 2 are non-negative. Then, each ϕ i would require the wrist to move towards an opposite direction, i.e., v 1 ≥ η 1 &gt; 0 and v 2 ≥ η 2 &gt; 0 , which is impossible and renders (6) infeasible (see fig. 2b). However, the humanoid can simply move the arm parallel to the planes until exiting from the openings to be safe (green direction in fig. 2b). Hence, different from the previous case, a safe control is not impossible in this case, but rather not found by the QP (6) with the designed ϕ i . We refer to such failures as method infeasibility. Although the QP in certain cases (e.g., the example above) can be made feasible by re-designing the control law, it hardly generalizes since we cannot know all possible obstacle configurations beforehand in cluttered environments.
+
+Figure 2: Possible scenarios where (6) can be infeasible. The humanoid should avoid collision with all obstacles (e.g., planes and spheres) in gray.
+
+<!-- image -->
+
+c) Kinematics Infeasibility: Infeasibility can also be caused by the complex kinematics chain of humanoids. Consider a humanoid avoiding hand collision with the sphere nearby in fig. 2c. With a similar definition of ϕ i to the above, the control constraints (6b) would require the hand i to move away with a velocity of v i ≥ η i for i = 1 , 2 when being too close to the obstacle. Restricted by the kinematics capability, the maximum velocity at which the hand can move depends on the actual joint configurations. In fig. 2c, with a more extended arm pose, the left hand would have a higher velocity limit than the right hand. Hence, a relatively large η i may work for the left hand but make the QP infeasible when handling the right hand. While a universally small η i may improve QP feasibility, that would make the robot overly insensitive to potential collisions. Designing energy functions ϕ i to be compatible with each body on the humanoid in general cases remains a challenge.
+
+The environment configurations shown in fig. 2 are merely toy examples while still making (6) infeasible. To address dexterous safety in cluttered environments, we will have significantly more constraints to handle the complex obstacle configurations. Several scenarios like those in fig. 2 may even be coupling, leading to QP infeasibility that can hardly be mitigated in practice. In that regard, we do not aim to construct persistently feasible QPs but instead desire a practical method that minimizes violations of control constraints when the QP becomes infeasible.
+
+## IV. PROJECTED SAFE SET ALGORITHM FOR INFEASIBLE CONSTRAINT SETS
+
+In this section, we propose several approaches to handling infeasible safe control problems. To facilitate further derivation, we first expand the safe control constraints in (6) by plugging in the system dynamics as follows.
+
+<!-- formula-not-decoded -->
+
+While our approaches are compatible with arbitrary task objective J , we instantiate an example in this section to aid discussions. We assume that (6) operates as a safety filter at the downstream of some nominal controller. With nominal control signal u ref , we can set J ( x, u ) = ∥ u -u ref ∥ 2 2 ,Q to compute a minimally invasive control u safe that satisfies safety constraints. Incorporating the control limits as well, (6) can be written as
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+## A. Relaxed Safe Set Algorithm
+
+When (9) becomes infeasible due to complex humanoidenvironment interactions, the most straight-forward remedy is to incorporate slack variables that relaxes the constraints to allow feasible solutions. Specifically, we introduce positive slack variables only for each of the safety constraints in (9b)
+
+since the control limits cannot be relaxed. Hence, we have
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+where s ∈ R M is the slack variable. We regularize s measured in Q rssa s -weighted p -norm, given by
+
+<!-- formula-not-decoded -->
+
+where Q rssa s is a diagonal matrix with positive coefficients. We refer to (10) as Relaxed Safe Set Algorithm (r-SSA). The solved s indicates the cost of safety violations, and should be as close to zero as possible to try to respect the safety constraints. As will be shown later, r-SSA can effectively produce safe control when the naive SSA (9) becomes infeasible, and enhances humanoid safety in cluttered environments.
+
+Importantly, r-SSA optimizes a combination of both performance objective (i.e., the first term) and safety objectives (i.e., the second term), which may be conflicting in general. It also balances multiple safety objectives represented by each ϕ i . r-SSA may prioritize the performance (i.e., reference tracking) and accept large slack variables (i.e., significant safety violations) if partial safety objectives are dominated, especially when the weighting parameters Q and Q rssa s are not properly tuned. As a result, r-SSA may still lead to critical safety failures in practice unless specifically tuned for each task. This challenge motivates us to take another step by removing potential racing conditions between the two objectives, which will be covered in the next section.
+
+## B. Projected Safe Set Algorithm
+
+In this section, we propose the Projected Safe Set Algorithm (p-SSA) that improves over r-SSA by always respecting the safety constraints to the maximal extend. The core idea behind p-SSA is to first project the current safe control constraint set, which can be infeasible, to the nearest feasible set. The u safe is only solved with the projected constraint set which is guaranteed to be feasible by the projection operation. It can be shown that with such decoupling, p-SSA always operates within the maximal feasible region indicated by the given constraint set, while being totally tuning-free.
+
+In phase I, the p-SSA first resolves infeasible safe control constraints in (9) by projecting the constraint set (9b) and (9c) on to the nearest feasible region, measured by the p -norm of total relaxation. Specifically, we solve the following optimization
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+to compute an optimal slack variable s ∗ . Then, in phase II, we solve u safe with the solved relaxation s ∗
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+Since s ∗ is feasible for (12), we know that the constraints (12b) with (12c) will be made feasible if relaxed by s ∗ (i.e., (13b) and (13c) ). Hence, phase II is guaranteed to be feasible without additional relaxation. Notably, p-SSA does not involve any direct trade-off between performance and safety since they are optimized independently via (12) and (13). Meanwhile, p-SSA guarantees to operate with minimal safety violations thanks to Phase I. As will be shown in the next section, pSSA, in fact, achieves the top performance across various task settings without parameter tuning, while r-SSA only matches p-SSA performance with careful tuning.
+
+Remark. Unlike Q rssa s , Q pssa s only influences the balance among multiple constraints. In practice, Q pssa s should be chosen to reflect the relative importance of different constraints. For example, more weight can be assigned to a constraint if it covers a critical aspect such as the safety of a high-torque link, or if it is closer to being violated (e.g., ϕ i closer to zero). In this paper, we set Q pssa s to identity and leave the investigation of smart ways to balance multiple safety constraints for future work.
+
+When implementing the above approaches, one needs to derive the two Lie derivatives, L f ϕ ( x ) and L g ϕ ( x ) , based on the designed energy functions ϕ i and plug into (10b) for r-SSA or (12b) and (13b) for p-SSA to complete the control constraints. For readability, we provide an example derivation of control constraints based on first-order energy functions designed for both robot-obstacle collision and self-collision in Appendix IX-B.
+
+## V. EXPERIMENTS
+
+In this section, we aim to showcase how our proposed methods handle infeasible safe control problems and ultimately improve safety for humanoids in cluttered environments. Through both simulation and hardware experiments, we will answer the following key questions.
+
+- Q1 : How often does (9) become infeasible in dexterous safety tasks in cluttered environments?
+- Q2 : Does r-SSA and p-SSA mitigate infeasible QPs and improve humanoid safety in cluttered environments?
+- Q3 : How does r-SSA compare to p-SSA in terms of parameter tuning and performance?
+- Q4 : How does p-SSA perform in real-world dexterous safety tasks?
+
+## A. Robot Modeling
+
+We consider the Unitree G1 humanoid robot in both MuJoCo simulation and real setup. We model the G1 dynamics with two variants to represent different use cases.
+
+Figure 3: Unitree G1 humanoid robot in MuJoCo simulation performing safe wrist location tracking. The humanoid tracks the goal (green) with its wrist while preventing collisions between robot bodies (black) and obstacles (gray) and self-collision. There are three active control constraints (blue) triggered by collision bodies being too close, while two of them are infeasible and relaxed by p-SSA (purple). The infeasibility is caused by the right arm trying to avoid both the obstacle and the torso at the same time.
+
+<!-- image -->
+
+G1FixedBase : This configuration considers only the upper body joints while keeping the base fixed. This model is useful for tasks where the humanoid is expected to perform tasks in-place, such as organizing objects on a fixed shelf. This model features 17 DoFs -7 DoFs for each arm and 3 for the waist-with the pelvis fixed to the world frame.
+
+G1WholeBody : This configuration includes 20 DoFs , consisting of 17 DoFs from G1FixedBase and 3 for base motion, modeled as a floating base. It is designed to assess safe control for humanoid robots as mobile manipulators, but isolating the challenges induced by locomotion.
+
+With either configuration, we model the humanoid dynamics using a first order integrator model, i.e., ˙ x = f ( x ) + g ( x ) u = u where f ( x ) = 0 and g ( x ) = I . The state x contains all DoF positions and u the DoF velocities, assuming an accurate velocity tracker at the downstream. Such setting simplifies the derivations while enabling us to focus on QP infeasibility. In practice, any control-affine systems 1 in the form of (1) can be used. Collision bodies on the humanoid are modeled in spheres as shown in fig. 3.
+
+Table I: Number of Bodies, Obstacles and Constraints in Test Cases
+
+| Test Case         |   DoFs |   Bodies |   Obs |   Self |   Body-Obs |
+|-------------------|--------|----------|-------|--------|------------|
+| G1WholeBody SO V0 |     20 |       19 |    50 |     29 |        950 |
+| G1WholeBody SO V1 |     20 |       19 |    10 |     29 |        190 |
+| G1WholeBody DO V0 |     20 |       19 |    50 |     29 |        950 |
+| G1WholeBody DO V1 |     20 |       19 |    10 |     29 |        190 |
+| G1FixedBase SO V0 |     17 |       19 |    10 |     29 |        190 |
+| G1FixedBase SO V1 |     17 |       19 |     5 |     29 |         95 |
+| G1FixedBase DO V0 |     17 |       19 |    10 |     29 |        190 |
+| G1FixedBase DO V1 |     17 |       19 |     5 |     29 |         95 |
+
+1 Non-control-affine systems can still be made control-affine via dynamics extension.
+
+## B. Experiment Setting
+
+To evaluate safe control algorithms in various cluttered environments, we design a set of dexterous safety tasks with various obstacle configurations and densities. In all tasks, the robot is tasked to track fixed 3D goal positions for its wrists and base (if with G1WholeBody ) while keeping at least d min , env = 0 . 05 m from external obstacles and at least d min , self = 0 . 01 m for self-collision. A new goal will spawn once the pervious one is reached.
+
+For constraint configurations, we consider two types:
+
+- Static Obstacle (SO): Stationary 3D spheres with 0 . 05 m radius distributed uniformly within a cubic task space of size 0 . 8 m .
+- Dynamic Obstacle (DO): Moving 3D spheres that follow Brownian motion after spawning uniformly within a task space of size 2 m × 2 m × 0 . 8 m .
+
+For each constraint type (SO and DO), we assign two levels of difficulty (V0 and V1) indicated by the number of obstacles. Considering two variants of dynamics configuration (G1FixedBase and G1WholeBody), we end up with eight different dexterous safety tasks. Table I shows the number of all considered robot body-obstacle pairs as well as selfcollision pairs in each task. When counting self-collision pairs, adjacent robot bodies that are always within d min , self distance are ignored. See Appendix IX-A for detailed configurations of the collision pairs. Both the obstacles and goals are represented as 3D spheres (see fig. 3).
+
+## C. Safe Control Methods
+
+To model safety after (6), we design an 0 th order safety index ϕ env i = ϕ env 0 ,i = d min , env -d i (since our dynamics is 1 st order) for the i th body-obstacle pair where d i is the body-obstacle distance. Likewise, ϕ self i = ϕ self 0 ,i = d min , self -d i covers self-collision. The final safety index is ϕ := [ ϕ env 1 , . . . , ϕ env M env , ϕ self 1 , . . . , ϕ self M self ] ∈ R M . η is set to 0 . 5 for each ϕ i for comparison under the same sensitivity to potential collisions. Under the same basic safe control law (i.e., ˙ ϕ ≤ -η when ϕ ≥ 0 ), we are interested in how the following strategies handle infeasible QPs.
+
+- p -SSA 2 : The Projected Safe Set Algorithm introduced in section IV-B with p = 2 in (12). Q = Q pssa s = I .
+- r -SSA 2 : The Relaxed Safe Set Algorithm introduced in section IV-A with p = 2 in (10). Q = I . With a fixed Q , Q rssa s decides the relative importance between performance and safety. Q rssa s will be tuned in the ablation study.
+- SSA : The naive safe set algorithm given by (9). Q = I . When (9) becomes infeasible, u ref is directly passed to the robot since there is no special handling of infeasibility.
+
+We use a PID policy to generate u ref for goal tracking without considering safety. Each of the above safe control methods finds a control u as close to u ref as possible to enforce safety constraints. See Appendix IX-B for the derivation of control constraints in (10b), (12b), and (13b).
+
+Figure 4: Comparison of safe control methods in G1FixedBase DO v0 task. Spheres and lines follow the convention in fig. 3. When an obstacle moves near the left elbow (frame 2), the QP becomes infeasible. In that case, p-SSA (top) generates control to minimize violation to control constraints, resulting in less violation (purple connection) than r-SSA (middle). Naive SSA (bottom) does not handle infeasible control constraints (thick red connection), leading to collisions (red spheres).
+
+<!-- image -->
+
+## D. Evaluation Metrics
+
+We evaluate each method in terms of both the task performance (e.g., goal tracking) and safety using a combination of metrics. For a trajectory of length T :
+
+- J : goal tracking performance given by
+
+<!-- formula-not-decoded -->
+
+where d i,t is the distance of the wrist or base i to its goal at each t .
+
+- C : control constraint satisfaction score, given by
+
+<!-- formula-not-decoded -->
+
+where s t = ∑ i s i,t . The parameter s i,t is the amount of violation to the i th control constraint at time t and s t is the total violation at time t . For p-SSA, s i,t is the solution to (12). For r-SSA, s i,t is solved in (10) with the control. For SSA, s i,t = max( ˙ ϕ i,t ( x t , u ∗ t ) + η i , 0) where u ∗ t is the solution to (9) if feasible, or u ref , t otherwise. C only evaluates time steps when the QP is infeasible.
+
+- S : safety constraint satisfaction score, given by
+
+<!-- formula-not-decoded -->
+
+S evaluates the average amount of safety margin d min that is invaded (e.g., negative d i,t -d min ). S = 0 for no violation. Notably, S evaluates direct violation to the safety specification (e.g., collisions) as a result of violation to control constraints which is evaluted by C . Hence, they are positively related while being different metrics.
+
+- R Feas : empirical probability of the QP to be feasible, given by
+
+<!-- formula-not-decoded -->
+
+## E. Overall Performance
+
+We apply p -SSA 2 , r -SSA 2 ( Q rssa s = 10 I ) and SSA to the eight test cases, each for 2000 steps. We evaluate the tracking performance for arms J Arm , C score and S score computed independently for environment collision ( C env /S env ) and self-collision ( C self /S self ), and QP feasibility rate R Feas . Figure 5 and Figure 6 report the overall comparison. See fig. 4 for examples of safety behaviors driven by the three methods. See Appendix IX-C for the corresponding plot of (a) ϕ values for the left hand, (b) joint positions of the left elbow, and (c) joint positions of the left shoulder joint that mainly drive those safety behaviors.
+
+- a) QP Feasibility Rate: We first focus on R Feas (bottom of each plot). Answering Q1 , the QP is more likely to be infeasible with more obstacles (V0). Comparing the robot modeling, the FixedBase variant also consistently makes QP easier to be infeasible due to the lack of mobility. Finally, obstacle movements (DO) reduce feasibility score since the safe control computed at the current step might be made unsafe by dynamic obstacles. Note that the naive SSA has higher R Feas than other methods in many cases. This is because naive SSA essentially ignores the obstacles if the QP is infeasible.
+
+Figure 6: Performance comparison under G1FixedBase configuration.
+
+<!-- image -->
+
+Since we disable the physical collision for simulated obstacles, the humanoid bodies can quickly swing through the obstacles and enter empty spaces. That makes QPs solved by naive SSA to have less active constraints and easier to be feasible. On the contrary, r-SSA and p-SSA normally enable the bodies to stay close to obstacles without collisions. That keeps the number of active constraints high in the QPs to solve, making more QPs to be infeasible.
+
+b) Minimizing Violations: Since naive SSA directly passes the reference control upon infeasible QP, violations to control constraints are significant, resulting in negligible C scores. Answering Q2 , r-SSA and p-SSA significantly improve C scores over naive SSA, meaning that they consistently reduce violations to control constraints when the QP is infeasible. Comparing r-SSA to p-SSA, we see that p-SSA further out-performs r-SSA in terms of minimizing control constraint violations ( C ), and consequently minimizing safety constraint violations ( S ). That is because p-SSA independently minimizes constraint violations, while r-SSA sometimes trades safety for performance (e.g., higher J Arm in many cases). In the next section, we perform ablation study to systematically investigate this issue.
+
+## F. Ablations on Relaxation Methods
+
+In this section, we perform ablation on r-SSA to see different performance-safety trade-offs and compare to p-SSA. To achieve that, we benchmark r-SSA again on all eight tasks with a comprehensive range of Q rssa s values: λI for λ = a · 10 b , a ∈ [1 , 9] , b ∈ [0 , 5] . We select C env as the proxy for safety and J Arm as the proxy for performance. See Figure 7 and Figure 8 for the result. Each orange point represents the ( J Arm , C env ) scores for r-SSA with a specific Q rssa s value. Pareto fronts are plotted for r-SSA. A point with some Q rssa s value is on the front if it is Pareto-optimal, meaning that there is no other Q rssa s ′ value that can improve r-SSA in both metrics over Q rssa s . Hence, the pareto front represents the optimal performance-safety trade-off curve for each task.
+
+In all tasks, we find that when Q rssa s is small, r-SSA would allow large control constraint violations to gain tracking performance (e.g., high J Arm ranges). As Q rssa s becomes larger, the tracking performance starts to degrade since the control constraints are respected more, and the constraint satisfaction score improves. At some point,the constraint satisfaction may stop improving while the task performance still degrades (e.g., lower J Arm ranges in fig. 7c, fig. 8a and fig. 8b). Based on the pareto front plots, one would prefer some Q rssa s value in the top safety performance region that has the highest tracking performance. Such tuning, however, would be tedious
+
+<!-- image -->
+
+(a) G1FixedBody Static Obstalce V0
+
+(b) G1FixedBody Static Obstalce V1
+
+(c) G1FixedBody Dynamic Obstalce V0
+
+(d) G1FixedBody Dynamic Obstalce V1
+
+Figure 8: Ablation study on r-SSA and p-SSA with G1FixedBody. Pareto fronts are plotted for r-SSA. r-SSA points are less transparent for larger Q rssa .
+
+and cannot generalize to different tasks because the pareto front varies a lot for different tasks. On the contrary, p-SSA automatically secures the sweet spot on the pareto fronts for all tasks. Hence, answering Q3 , while r-SSA can achieve optimal performance-safety trade-off with careful parameter tuning, pSSA automatically achieves that with zero parameter tuning.
+
+## G. Safe Teleoperation on Unitree G1 Humanoid
+
+To demonstrate the practical application of p-SSA, we perform a safe teleoperation task with a Unitree G1 humanoid. During tele-operation, the humanoid motions may not exactly match the expectation of the operator due to various factors such as imperfect motion retargeting, delay, and human errors. A safety filter like p-SSA would be useful in preventing unwanted collisions and ease the burden of safety from the operator. In specific, we consider a scenario where the operator tele-operates the humanoid to organize a cabinet with tight opening. The humanoid needs to put both arms inside the cabinet to manipulate objects without self-collision or colliding with the cabinet with any of its body parts. The robot needs to avoid multiple obstacles (e.g., sides of the cabinet) at the same time in a confined space, yielding a typical dexterous safety problem in cluttered environments.
+
+To generate u ref , we implemented a tele-operation framework that projects human wrist locations in human waist frame to those in humanoid frames. A nominal controller solves inverse kinematics (IK) to acquire the desired upper body joint positions, and generates joint velocity commands via PID without considering safety. We implement p-SSA with the G1FixedBase model described in section V-A. Collision volumes of the cabinet are modeled as planes. The design
+
+s
+
+of energy functions ϕ i respects the same safety margins in section V-B. Human motions, humanoid locations and obstacle locations are all sensed by an Apple Vision Pro (AVP) wore by the operator.
+
+We show this task with both a simulated robot in MuJoCo and a real G1 humanoid with the same AVP-based teleoperation framework. In both cases, the operator is encouraged to perform risky actions to see how p-SSA kicks in. In simulation (see fig. 9), we can see that p-SSA effectively rejects unsafe nominal controls. For instance, even when the tele-operation goals travel through the cabinet walls, the robot arms stay inside the cabinet instead of following the goals blindly. With real hardware (see fig. 1), we observe that p-SSA is able to prevent collisions with multiple types of improper operator actions. In both simulation and real experiments, partial control constraints have to be relaxed, as indicated by the purple lines connecting collision pairs. Hence, answering Q4 , p-SSA is able to mitigate infeasible QPs in practical scenarios, making itself a reliable approach to the problem of dexterous safety in cluttered environments.
+
+## VI. LIMITATIONS
+
+Both p-SSA and r-SSA demonstrated promising results when mitigating infeasible safe control optimizations for humanoids by relaxing the constraints with a minimal amount. However, as long as relaxation is needed, the safety violation cannot be bounded, preventing any safety guarantee to hold. To enhance our work with certain guarantees, it may be possible to adapt the original control constraints based on the solved minimal relaxation. Then, we might be able to temporarily restore safety guarantees, enhancing post-infeasible-QP safety.
+
+Figure 9: Safe teleopration with simluated Unitree G1 humanoid. The humanoid tracks wrist position goals (green) sent by the tele-operator while avoiding collision with the cabinet modeled by a few planes (gray).
+
+<!-- image -->
+
+## VII. DISCUSSIONS AND CONCLUSIONS
+
+In this paper, we proposes the Relaxed Safe Set Algorithm (r-SSA) and Projected Safe Set Algorithm (p-SSA) to mitigate infeasible safe control optimizations in the problem of dexterous safety in cluttered environments. We showed that there are multiple sources of infeasibility, making it extremely hard to synthesize permanently feasible safe controllers for multiconstraint cases. Through both simulation and real experiments on a Unitree G1 humanoid, we validated both r-SSA and p-SSA as practical approaches to computing safe control in challenging collision avoidance tasks. We also showed that pSSA achieved the optimal performance-safety trade-off across various tasks with zero parameter tuning. For future work, we are interested in investigating optimal ways to balance between different safety constraints for p-SSA and improve the safety index design to account for higher order dynamics.
+
+## VIII. ACKNOWLEDGEMENT
+
+This work is supported by the National Science Foundation under grant No. 2144489.
+
+We thank Zhixuan Liu for the help in making figures.
+
+## REFERENCES
+
+- [1] Aaron D Ames, Jessy W Grizzle, and Paulo Tabuada. Control barrier function based quadratic programs with application to adaptive cruise control. In 53rd IEEE Conference on Decision and Control , pages 6271-6278. IEEE, 2014.
+- [2] Aaron D Ames, Xiangru Xu, Jessy W Grizzle, and Paulo Tabuada. Control barrier function based quadratic programs for safety critical systems. IEEE Transactions on Automatic Control , 62(8):3861-3876, 2016.
+- [3] Joseph Breeden and Dimitra Panagou. Compositions of multiple control barrier functions under input constraints. In 2023 American Control Conference (ACC) , pages 3688-3695. IEEE, 2023.
+- [4] Hongyi Chen and Changliu Liu. Safe and sampleefficient reinforcement learning for clustered dynamic environments. IEEE Control Systems Letters , 6:19281933, 2021.
+- [5] Rui Chen, Weiye Zhao, and Changliu Liu. Safety index synthesis with state-dependent control space. arXiv preprint , 2023.
+- [6] Rui Chen, Weiye Zhao, Ruixuan Liu, Weiyang Zhang, and Changliu Liu. Real-time safety index adaptation for parameter-varying systems via determinant gradient ascend. arXiv preprint , 2023.
+- [7] Jason J Choi, Donggun Lee, Koushil Sreenath, Claire J Tomlin, and Sylvia L Herbert. Robust control barriervalue functions for safety-critical control. In IEEE CDC , pages 6814-6821, 2021.
+- [8] Jason J Choi, Fernando Castaneda, Wonsuhk Jung, Bike Zhang, Claire J Tomlin, and Koushil Sreenath. Constraint-guided online data selection for scalable datadriven safety filters in uncertain robotic systems. arXiv preprint arXiv:2311.13824 , 2023.
+- [9] Charles Dawson, Zengyi Qin, Sicun Gao, and Chuchu Fan. Safe nonlinear control using robust neural lyapunovbarrier functions. In Conference on Robot Learning , pages 1724-1735. PMLR, 2022.
+- [10] Mohamed Djeha, Pierre Gergondet, and Abderrahmane Kheddar. Robust task-space quadratic programming for kinematic-controlled robots. IEEE Transactions on Robotics , 2023.
+- [11] Paul Glotfelter, Ian Buckley, and Magnus Egerstedt. Hybrid nonsmooth barrier functions with applications to provably safe and composable collision avoidance for robotic systems. IEEE Robotics and Automation Letters , 4(2):1303-1310, 2019.
+- [12] Tairan He, Chong Zhang, Wenli Xiao, Guanqi He, Changliu Liu, and Guanya Shi. Agile but safe: Learning collision-free high-speed legged locomotion. arXiv preprint arXiv:2401.17583 , 2024.
+- [13] Charles Khazoom, Daniel Gonzalez-Diaz, Yanran Ding, and Sangbae Kim. Humanoid self-collision avoidance using whole-body control with control barrier functions. In 2022 IEEE-RAS 21st International Conference on Humanoid Robots (Humanoids) , pages 558-565. IEEE, 2022.
+- [14] Hsien-Chung Lin, Changliu Liu, Yongxiang Fan, and Masayoshi Tomizuka. Real-time collision avoidance algorithm on industrial manipulators. In IEEE CCTA , pages 1294-1299. IEEE, 2017.
+- [15] Changliu Liu and Masayoshi Tomizuka. Control in a safe set: Addressing safety in human-robot interactions. In Dynamic Systems and Control Conference , volume 46209. American Society of Mechanical Engineers,
+
+2014.
+
+- [16] Ruixuan Liu, Rui Chen, and Changliu Liu. Safe interactive industrial robots using jerk-based safe set algorithm. arXiv preprint arXiv:2204.03038 , 2022.
+- [17] Ruixuan Liu, Rui Chen, Abulikemu Abuduweili, and Changliu Liu. Proactive human-robot co-assembly: Leveraging human intention prediction and robust safe control. In 2023 IEEE Conference on Control Technology and Applications (CCTA) , pages 339-345. IEEE, 2023.
+- [18] Simin Liu, John Dolan, and Changliu Liu. Safe control under input saturation with neural control barrier functions. In CoRL , 2022.
+- [19] Tamas G Molnar, Ryan K Cosner, Andrew W Singletary, Wyatt Ubellacker, and Aaron D Ames. Model-free safety-critical control for robotic systems. IEEE robotics and automation letters , 7(2):944-951, 2021.
+- [20] Quan Nguyen, Ayonga Hereid, Jessy W Grizzle, Aaron D Ames, and Koushil Sreenath. 3d dynamic walking on stepping stones with control barrier functions. In 2016 IEEE 55th Conference on Decision and Control (CDC) , pages 827-834. IEEE, 2016.
+- [21] Ravi Pandya, Tianhao Wei, and Changliu Liu. Multimodal safe control for human-robot interaction. In 2024 American Control Conference (ACC) , pages 2672-2678. IEEE, 2024.
+- [22] Andrew Singletary, Aiden Swann, Yuxiao Chen, and Aaron D Ames. Onboard safety guarantees for racing drones: High-speed geofencing with control barrier functions. IEEE Robotics and Automation Letters , 7(2):28972904, 2022.
+- [23] Andrew Taylor, Andrew Singletary, Yisong Yue, and Aaron Ames. Learning for safety-critical control with control barrier functions. In Learning for Dynamics and Control , pages 708-717. PMLR, 2020.
+- [24] Andrew J Taylor and Aaron D Ames. Adaptive safety with control barrier functions. In 2020 American Control Conference (ACC) , pages 1399-1405. IEEE, 2020.
+- [25] Haijing Wang, Jinzhu Peng, Juanjuan Xu, Fangfang Zhang, and Yaonan Wang. High-order control barrier functions-based optimization control for time-varying nonlinear systems with full-state constraints: A dynamic sub-safe set approach. International Journal of Robust and Nonlinear Control , 33(8):4490-4503, 2023.
+- [26] Tianhao Wei and Changliu Liu. Safe control algorithms using energy functions: A unified framework, benchmark, and new directions. In Conference on Decision and Control , 2019.
+- [27] Wei Xiao and Calin Belta. Control barrier functions for systems with high relative degree. In CDC , pages 474479. IEEE, 2019.
+- [28] Kai S Yun, Rui Chen, Chase Dunaway, John M Dolan, and Changliu Liu. Safe control of quadruped in varying dynamics via safety index adaptation. arXiv preprint arXiv:2409.09882 , 2024.
+- [29] Weiye Zhao, Tairan He, and Changliu Liu. Model-free safe control for zero-violation reinforcement learning. In
+
+Conference on Robot Learning , 2021.
+
+- [30] Weiye Zhao, Tairan He, Tianhao Wei, Simin Liu, and Changliu Liu. Safety index synthesis via sum-of-squares programming. In ACC , pages 732-737. IEEE, 2023.
+- [31] Guiliang Zheng, Minhao Yang, and Yuxuan Wu. Model free safe control for reinforcement learning in a clustered dynamic environment. In 2022 5th International Conference on Mechatronics, Robotics and Automation (ICMRA) , pages 19-26, 2022. doi: 10.1109/ ICMRA56206.2022.10145738.
+
+## A. Self-collision Configuration
+
+For self-collision, we consider 29 pairs of humanoid bodies located at the joints listed below.
+
+Table II: 29 Self-collision Humanoid Body Pairs
+
+| Joint 1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Joint 2                                                                                                                                                                                                                                                                                                                                          |
+|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| left shoulder roll joint left shoulder roll joint left shoulder roll joint left shoulder roll joint left shoulder roll joint left shoulder roll joint left elbow joint left elbow joint left elbow joint left elbow joint left elbow joint left elbow joint left elbow joint right shoulder roll joint right shoulder roll joint right shoulder roll joint right shoulder roll joint right elbow joint right elbow joint right elbow joint right elbow joint right elbow joint L ee L ee L ee L ee R ee R ee | left elbow joint right shoulder roll joint right elbow joint L ee R ee torso link 3 right shoulder roll joint right elbow joint L ee R ee torso link 1 torso link 2 torso link 3 right elbow joint L ee R ee torso link 3 L ee R ee torso link 1 torso link 2 torso link 3 R ee torso link 1 torso link 2 torso link 3 torso link 1 torso link 2 |
+
+## B. Derivation of Safe Control Constraints
+
+We provide an example derivation of L f ϕ ( x ) and L g ϕ ( x ) for completing the control constraints in (10b) for r-SSA and (12b) and (13b) for p-SSA. Assume that we have M env different energy functions [ ϕ env 1 , . . . , ϕ env M env ] for humanoid-obstacle collision and another M self for self-collision: [ ϕ self 1 , . . . , ϕ self M self ] . ϕ env i = d min , env -d i requires the distance between a collision body j on the humanoid and an obstacle k to be no less than d min , env . Likewise, ϕ self i = d min , self -d i requires collision body j and collision body k to be at least d min , self apart. d i represents the current distance of interest with humanoid state x . The final safety index is
+
+<!-- formula-not-decoded -->
+
+We first derive L f ϕ ( x )[ i ] and L g ϕ ( x )[ i ] ( i th row) for i ∈ [1 , M env ] . Assume that both collision bodies and obstacles are modeled as spheres with radius R , the distance d i is given by
+
+<!-- formula-not-decoded -->
+
+where F j ( · ) is the forward kinematics function that computes the 3D center position of the collision sphere j on the humanoid from joint position x . t O k is the 3D center position of the obstacle k . We have
+
+<!-- formula-not-decoded -->
+
+where J j ( · ) is the Jacobian of the 3D center position of collision body j with respect to the humanoid joint positions. Then, we have
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+Similarly,
+
+## IX. APPENDIX
+
+To derive for i ∈ [ M env +1 , M env + M self ] , we have
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+Similar to (22) and (23), we have
+
+<!-- formula-not-decoded -->
+
+<!-- formula-not-decoded -->
+
+## C. Comparison of ϕ in Simulated Safe Goal Reaching
+
+Figure 10: Change of ϕ that describes safety between the left hand and the nearest obstacle in fig. 4. We can see that p-SSA consistently bounds ϕ below zero with some tolerance due to discretization. r-SSA allows more violations when handling infeasible QP. Naive SSA (No Slack) leads to the most significant violations.
+
+<!-- image -->
+
+with gradient
+
+Figure 11: Change of left elbow joint position in fig. 4.
+
+<!-- image -->
+
+Figure 12: Change of left shoulder roll joint position in fig. 4.
+
+<!-- image -->
