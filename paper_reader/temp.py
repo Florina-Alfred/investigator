@@ -14,7 +14,7 @@ import logging
 
 DOWNLOADS_FOLDER = "downloads"
 PAPERS_TO_READ = []
-TOTAL_PAPERS_TO_QUERY = 2
+TOTAL_PAPERS_TO_QUERY = 10
 MODEL = ""
 
 
