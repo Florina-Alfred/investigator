@@ -1,4 +1,5 @@
 import argparse
+import time
 from ollama import chat
 import re
 from typing import List
@@ -13,7 +14,7 @@ import logging
 
 DOWNLOADS_FOLDER = "downloads"
 PAPERS_TO_READ = []
-TOTAL_PAPERS_TO_QUERY = 10
+TOTAL_PAPERS_TO_QUERY = 2
 MODEL = ""
 
 
@@ -198,13 +199,11 @@ def download_papers(query: str):
         convert_and_export(paper.link, output_path)
 
 
-def get_papers(query: str, max_results: int = 6) -> str:
+def get_papers(query: str, max_results: int = TOTAL_PAPERS_TO_QUERY) -> str:
     global DOWNLOADS_FOLDER, PAPERS_TO_READ
 
-    DOWNLOADS_FOLDER = os.path.join(
-        DOWNLOADS_FOLDER, replace_symbols_with_underscore(query)
-    )
-    os.makedirs(DOWNLOADS_FOLDER, exist_ok=True)
+    pdf_folder = os.path.join(DOWNLOADS_FOLDER, replace_symbols_with_underscore(query))
+    os.makedirs(pdf_folder, exist_ok=True)
 
     client = arxiv.Client()
     if len(query.split(" ")) > 1:
@@ -217,13 +216,10 @@ def get_papers(query: str, max_results: int = 6) -> str:
     )
     logging.info("Downloading paper:\n")
     for idx, search_result in enumerate(client.results(search)):
-        search_result.download_pdf(dirpath=f"{DOWNLOADS_FOLDER}")
+        search_result.download_pdf(dirpath=f"{pdf_folder}")
         logging.info(f"\t{idx + 1}.{search_result.title}\n")
-        # output_path = os.path.join(
-        #     DOWNLOADS_FOLDER, replace_symbols_with_underscore(search_result.title)
-        # )
 
-    return DOWNLOADS_FOLDER
+    return pdf_folder
 
 
 def write_file(content: str, name: str):
@@ -321,7 +317,7 @@ def convert_to_markdown(location_of_pdf: str, location_to_save: str) -> bool:
     return True
 
 
-def direct_summary(direct : str):
+def direct_summary(direct: str):
     global MODEL, PAPERS_TO_READ, DOWNLOADS_FOLDER
 
     file_or_folder_path = (
@@ -362,23 +358,21 @@ def direct_summary(direct : str):
             if success:
                 PAPERS_TO_READ.append(location_to_save)
 
-    print(f"-------------{PAPERS_TO_READ}")
-
-    # for idx, paper in enumerate(PAPERS_TO_READ):
-    #     start_time = time.perf_counter()
-    #     logging.info(f"{idx + 1}.Reading:------- {paper}")
-    #     paper_content = read_file(paper)
-    #     prompt = read_file("./prompts/summarize_paper.md")
-    #     question = "Please summarize the following paper:\n\n\n" + paper_content
-    #     summary = ask_model(question, model=MODEL, system_prompt=prompt)
-    #     logging.info(f"\tSaving:------- {paper}")
-    #     logging.info(
-    #         f"\tTime taken for answering: {time.perf_counter() - start_time:0.2f} seconds"
-    #     )
-    #     summary_paper_name = (
-    #         paper + f"_summary_{replace_symbols_with_underscore(MODEL)}"
-    #     )
-    #     write_file(summary, summary_paper_name)
+    for idx, paper in enumerate(PAPERS_TO_READ):
+        start_time = time.perf_counter()
+        logging.info(f"{idx + 1}.Reading:------- {paper}")
+        paper_content = read_file(paper)
+        prompt = read_file("./prompts/summarize_paper.md")
+        question = "Please summarize the following paper:\n\n\n" + paper_content
+        summary = ask_model(question, model=MODEL, system_prompt=prompt)
+        logging.info(f"\tSaving:------- {paper}")
+        logging.info(
+            f"\tTime taken for answering: {time.perf_counter() - start_time:0.2f} seconds"
+        )
+        summary_paper_name = (
+            paper + f"_summary_{replace_symbols_with_underscore(MODEL)}"
+        )
+        write_file(summary, summary_paper_name)
 
 
 def main():

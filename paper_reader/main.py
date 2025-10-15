@@ -73,7 +73,7 @@ def convert_and_export(source_url: str, output_path: str) -> None:
     try:
         converter = DocumentConverter()
         result = converter.convert(source_url)
-        with open(output_path + ".md", "w", encoding="utf-8") as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             f.write(result.document.export_to_markdown())
         logging.info(f"Document exported to {output_path}")
     except Exception as e:
@@ -185,7 +185,7 @@ def download_paper(single: str):
     if paper is not None:
         logging.info(f"Converting paper: {paper.title}")
         output_path = os.path.join(
-            DOWNLOADS_FOLDER, replace_symbols_with_underscore(paper.title)
+            DOWNLOADS_FOLDER, replace_symbols_with_underscore(paper.title) + ".md"
         )
         PAPERS_TO_READ.append(output_path)
         convert_and_export(paper.link, output_path)
@@ -199,7 +199,7 @@ def download_papers(query: str):
     for idx, paper in enumerate(papers):
         logging.info(f"{idx + 1}.Converting paper: {paper.title}")
         output_path = os.path.join(
-            DOWNLOADS_FOLDER, replace_symbols_with_underscore(paper.title)
+            DOWNLOADS_FOLDER, replace_symbols_with_underscore(paper.title) + ".md"
         )
         PAPERS_TO_READ.append(output_path)
         convert_and_export(paper.link, output_path)
@@ -212,8 +212,8 @@ def read_file(file: str) -> str:
 
 def write_file(content: str, name: str):
     global MODEL
-    name = name + f"_summary_{replace_symbols_with_underscore(MODEL)}"
-    with open(name + ".md", "w", encoding="utf-8") as f:
+    # name = name + f"_summary_{replace_symbols_with_underscore(MODEL)}"
+    with open(name, "w", encoding="utf-8") as f:
         f.write(content)
 
 
@@ -337,6 +337,11 @@ def main():
         logging.info(f"\tSaving:------- {paper}")
         logging.info(
             f"\tTime taken for answering: {time.perf_counter() - start_time:0.2f} seconds"
+        )
+        paper = (
+            paper[:-3]
+            + f"_summary_{replace_symbols_with_underscore(MODEL)}"
+            + paper[-3:]
         )
         write_file(summary, paper)
 
